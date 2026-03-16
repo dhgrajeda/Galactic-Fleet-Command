@@ -10,8 +10,10 @@ export { InMemoryRepository, type Repository } from './InMemoryRepository';
 export {
   createInMemoryFleetRepository,
   type Fleet,
+  type FleetEvent,
   type FleetRepository,
   type FleetState,
+  type Ship,
 } from './fleetRepository';
 
 export {
@@ -28,3 +30,10 @@ export {
   type ResourcePoolRepository,
   type ResourceType,
 } from './resourcePoolRepository';
+
+export {
+  createInMemoryBattleRepository,
+  type Battle,
+  type BattleRepository,
+  type BattleStatus,
+} from './battleRepository';

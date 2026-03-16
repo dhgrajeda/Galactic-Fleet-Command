@@ -379,6 +379,34 @@ Every entity carries a `version` field. `update()` accepts an `expectedVersion`;
 - ⚠️ Retry logic must be written in the command handler; excessive contention causes retry storms
 - Mitigation: bounded retry count with exponential backoff (max 3 attempts); commands fail with `RESOURCE_CONTENTION` after exhausting retries
 
+#### ⚠️ Cross-Entity Atomicity: The Real Consistency Risk
+
+Optimistic locking guarantees conflict *detection* on a single entity — it does **not** make updates to two separate entities atomic. Reserving resources requires writing to both `ResourcePool` (increment `reserved`) and `Fleet` (record `reservedResources`). These are two independent `repo.update()` calls. If the first succeeds and the second fails, the system is inconsistent.
+
+This risk exists regardless of which concurrency strategy is chosen (including Option C — a Resource Manager serialises writes to one pool but still cannot atomically commit across Fleet and ResourcePool).
+
+**Mitigation: order writes so partial failure is recoverable.**
+
+Update `Fleet` first, `ResourcePool` second:
+
+```
+1. fleet = getFleet(id)                      // read
+2. startPreparation(fleet)                   // Fleet: Docked → Preparing (write #1)
+3. reserve() → update each ResourcePool      // write #2, #3, #4 (one per resource type)
+4. completePreparation(fleet, reserved)      // Fleet: Preparing → Ready (write #5)
+```
+
+If step 3 fails after some pools have already been updated:
+- The retry path in `ResourceReservationService` skips already-reserved `(commandId, resourceType)` pairs
+- The Fleet remains in `Preparing`, which the idempotency guard treats as "in progress" — safe to retry
+
+If step 4 fails after step 3 fully succeeded:
+- Fleet is still `Preparing`; ResourcePool `reserved` is already incremented
+- On retry, the idempotency fence skips re-reservation; only the Fleet write is retried
+- This is safe because the fence tracks per-commandId reservations
+
+The ordering and idempotency fence together ensure no double-reservation occurs on retry.
+
 **Why not Option A despite it being locally simpler?** Because the goal of this assignment is to demonstrate production-grade thinking. Option A is a local trick that evaporates the moment the codebase touches a real database. Option D is the pattern that works identically in memory today and with Cosmos DB (`_etag`) or PostgreSQL (`rowVersion`) tomorrow — zero domain changes required.
 
 #### ⚠️ Implementation Note: The Concurrency Test Requires a Deliberate Yield

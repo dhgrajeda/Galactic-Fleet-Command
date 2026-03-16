@@ -1,7 +1,7 @@
-import { VersionedEntity } from './types';
 
 import { InMemoryRepository } from './InMemoryRepository';
 import type { Repository } from './InMemoryRepository';
+import { VersionedEntity } from './types';
 
 /**
  * Fleet lifecycle states (see assignment domain model).
@@ -17,13 +17,27 @@ export type FleetState =
   | 'Destroyed'
   | 'FailedPreparation';
 
-/**
- * Minimal fleet entity for persistence.
- * Candidates can extend with ships, loadout, reserved resources, etc.
- */
+export interface Ship {
+  id: string;
+  name: string;
+  class: string;
+}
+
+export interface FleetEvent {
+  type: string;
+  timestamp: string;
+  data?: Record<string, unknown>;
+}
+
 export interface Fleet extends VersionedEntity {
   name: string;
   state: FleetState;
+  ships: Ship[];
+  requiredResources: Record<string, number>;
+  reservedResources: Record<string, number>;
+  timeline: FleetEvent[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type FleetRepository = Repository<Fleet>;

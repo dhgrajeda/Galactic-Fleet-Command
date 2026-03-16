@@ -1,7 +1,7 @@
-import { VersionedEntity } from './types';
 
 import { InMemoryRepository } from './InMemoryRepository';
 import type { Repository } from './InMemoryRepository';
+import { VersionedEntity } from './types';
 
 /**
  * Command lifecycle (see assignment).

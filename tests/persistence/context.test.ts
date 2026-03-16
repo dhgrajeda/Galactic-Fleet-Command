@@ -1,54 +1,51 @@
 import { createInMemoryFleetRepository, createInMemoryCommandRepository, createInMemoryResourcePoolRepository } from '../../src/persistence';
 import { createPersistenceContext } from '../../src/persistence/context';
+import { createFleet } from '../../src/domain/fleet';
 
 describe('createPersistenceContext', () => {
-  it('returns a context with fleets, commands, and resourcePools', () => {
+  it('returns a context with fleets, commands, resourcePools, and battles', () => {
     const ctx = createPersistenceContext();
     expect(ctx.fleets).toBeDefined();
     expect(ctx.commands).toBeDefined();
     expect(ctx.resourcePools).toBeDefined();
+    expect(ctx.battles).toBeDefined();
   });
 
   it('each context has independent stores', () => {
     const ctx1 = createPersistenceContext();
     const ctx2 = createPersistenceContext();
 
-    ctx1.fleets.create({
-      id: 'f1',
-      version: 1,
-      name: 'Alpha',
-      state: 'Docked',
-    });
-    expect(ctx1.fleets.get('f1')).toBeDefined();
-    expect(ctx2.fleets.get('f1')).toBeUndefined();
+    const fleet = createFleet(ctx1.fleets, { name: 'Alpha' });
+    expect(ctx1.fleets.get(fleet.id)).toBeDefined();
+    expect(ctx2.fleets.get(fleet.id)).toBeUndefined();
   });
 
   it('context repos support create and get', () => {
     const ctx = createPersistenceContext();
-    ctx.fleets.create({
-      id: 'f1',
-      version: 1,
-      name: 'Alpha',
-      state: 'Docked',
-    });
+    const fleet = createFleet(ctx.fleets, { name: 'Alpha' });
     ctx.commands.create({
       id: 'c1',
       version: 1,
       type: 'PrepareFleet',
       status: 'Queued',
-      payload: { fleetId: 'f1' },
+      payload: { fleetId: fleet.id },
     });
-    expect(ctx.fleets.getOrThrow('f1').name).toBe('Alpha');
+    expect(ctx.fleets.getOrThrow(fleet.id).name).toBe('Alpha');
     expect(ctx.commands.getOrThrow('c1').type).toBe('PrepareFleet');
+  });
+
+  it('returns empty resource pools (no auto-seeding)', () => {
+    const ctx = createPersistenceContext();
+    expect(ctx.resourcePools.getByType('FUEL')).toBeUndefined();
   });
 });
 
 describe('in-memory repository factories', () => {
   it('createInMemoryFleetRepository returns a repository that clears independently', () => {
     const repo = createInMemoryFleetRepository();
-    repo.create({ id: 'f1', version: 1, name: 'F1', state: 'Docked' });
+    const fleet = createFleet(repo, { name: 'F1' });
     repo.clear();
-    expect(repo.get('f1')).toBeUndefined();
+    expect(repo.get(fleet.id)).toBeUndefined();
   });
 
   it('createInMemoryCommandRepository supports create and get', () => {

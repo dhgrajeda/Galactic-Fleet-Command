@@ -8,6 +8,7 @@ export interface Repository<T extends VersionedEntity> {
   create(entity: T): void;
   get(id: string): T | undefined;
   getOrThrow(id: string): T;
+  getAll(): T[];
   update(id: string, expectedVersion: number, updater: (entity: T) => T): void;
   delete(id: string, expectedVersion?: number): void;
   clear(): void;
@@ -40,6 +41,10 @@ export class InMemoryRepository<T extends VersionedEntity> implements Repository
       throw new NotFoundError(id);
     }
     return entity;
+  }
+
+  getAll(): T[] {
+    return [...this.store.values()];
   }
 
   update(id: string, expectedVersion: number, updater: (entity: T) => T): void {
