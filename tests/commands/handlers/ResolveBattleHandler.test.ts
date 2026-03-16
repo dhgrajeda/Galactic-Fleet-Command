@@ -1,6 +1,7 @@
 import { createPersistenceContext } from '../../../src/persistence/context';
 import { createFleet, startPreparation, completePreparation, deployFleet, enterBattle } from '../../../src/domain/fleet';
 import { seedResourcePools } from '../../../src/domain/resources';
+import { NoopLogger } from '../../../src/logger';
 import { ResolveBattleHandler } from '../../../src/commands/handlers/ResolveBattleHandler';
 import type { CommandHandlerServices } from '../../../src/commands/types';
 import type { Command } from '../../../src/persistence';
@@ -13,6 +14,7 @@ function setup() {
     fleets: ctx.fleets,
     resourcePools: ctx.resourcePools,
     battles: ctx.battles,
+    logger: new NoopLogger(),
   };
   return { ctx, services };
 }

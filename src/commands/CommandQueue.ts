@@ -49,6 +49,7 @@ export class InMemoryCommandQueue implements ICommandQueue {
     };
     this.services.commands.create(command);
     this.pending.push(command.id);
+    this.services.logger.info('Command enqueued', { commandId: command.id, commandType: command.type });
     return command;
   }
 
@@ -86,8 +87,11 @@ export class InMemoryCommandQueue implements ICommandQueue {
       throw err;
     }
 
+    const log = this.services.logger.child({ commandId: id, commandType: command.type });
+
     const handler = this.handlers.get(command.type);
     if (!handler) {
+      log.error('No handler registered', { commandType: command.type });
       this.markFailed(id, `No handler registered for command type: ${command.type}`);
       return;
     }
@@ -96,6 +100,7 @@ export class InMemoryCommandQueue implements ICommandQueue {
 
     for (let attempt = 0; attempt <= RETRY_DELAYS.length - 1; attempt++) {
       if (attempt > 0) {
+        log.warn('Retrying command', { attempt, delayMs: RETRY_DELAYS[attempt] });
         await delay(RETRY_DELAYS[attempt]);
       }
 
@@ -117,12 +122,14 @@ export class InMemoryCommandQueue implements ICommandQueue {
     }
 
     if (result.success) {
+      log.info('Command succeeded');
       this.markSucceeded(id);
       const cmd = this.services.commands.getOrThrow(id);
       for (const hook of this.hooks) {
         await hook(cmd, this.services);
       }
     } else {
+      log.error('Command failed', { error: result.error });
       this.markFailed(id, result.error);
     }
   }

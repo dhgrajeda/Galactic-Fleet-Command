@@ -1,3 +1,5 @@
+import type { Logger } from '../../logger';
+import { NoopLogger } from '../../logger';
 import { ConcurrencyError } from '../../persistence';
 
 /**
@@ -17,7 +19,12 @@ const MAX_RETRIES = 3;
  */
 export class BattleMatchmaker implements IBattleMatchmaker {
   private readonly pool: Set<string> = new Set();
+  private readonly logger: Logger;
   private version = 0;
+
+  constructor(logger?: Logger) {
+    this.logger = logger ?? new NoopLogger();
+  }
 
   /**
    * Add a fleet to the matchmaking pool. If a pair is available, returns both
@@ -56,6 +63,9 @@ export class BattleMatchmaker implements IBattleMatchmaker {
       }
       if (!result) {
         this.pool.add(fleetId);
+        this.logger.info('Fleet added to matchmaking pool', { fleetId, poolSize: this.pool.size });
+      } else {
+        this.logger.info('Match found', { fleetA: result[0], fleetB: result[1] });
       }
       this.version++;
 

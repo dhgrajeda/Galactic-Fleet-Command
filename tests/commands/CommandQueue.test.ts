@@ -1,5 +1,6 @@
 import { createPersistenceContext } from '../../src/persistence/context';
 import { seedResourcePools } from '../../src/domain/resources';
+import { NoopLogger } from '../../src/logger';
 import { InMemoryCommandQueue } from '../../src/commands/CommandQueue';
 import type { ICommandHandler, CommandHandlerServices } from '../../src/commands/types';
 import type { Command } from '../../src/persistence';
@@ -12,6 +13,7 @@ function makeQueue() {
     fleets: ctx.fleets,
     resourcePools: ctx.resourcePools,
     battles: ctx.battles,
+    logger: new NoopLogger(),
   };
   const queue = new InMemoryCommandQueue(services);
   return { queue, services, ctx };

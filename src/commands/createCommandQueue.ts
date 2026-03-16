@@ -21,7 +21,7 @@ export function createCommandQueue(services: CommandHandlerServices): ICommandQu
   queue.registerHandler(ResolveBattleHandler);
 
   // Battle matchmaker — post-processing hooks
-  const matchmaker = new BattleMatchmaker();
+  const matchmaker = new BattleMatchmaker(services.logger.child({ component: 'matchmaker' }));
 
   queue.onCommandCompleted(async (command) => {
     if (command.type === 'DeployFleet') {

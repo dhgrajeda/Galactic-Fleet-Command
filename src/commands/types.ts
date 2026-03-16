@@ -1,6 +1,5 @@
+import type { Logger } from '../logger';
 import type { BattleRepository, Command, CommandRepository , FleetRepository , ResourcePoolRepository } from '../persistence';
-
-
 
 /**
  * Services bag passed to command handlers — avoids positional parameters.
@@ -10,6 +9,7 @@ export interface CommandHandlerServices {
   fleets: FleetRepository;
   resourcePools: ResourcePoolRepository;
   battles: BattleRepository;
+  logger: Logger;
 }
 
 /**
