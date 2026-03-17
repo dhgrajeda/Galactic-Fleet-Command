@@ -1,4 +1,6 @@
 import { ConcurrencyError, NotFoundError, createInMemoryFleetRepository } from '../../../src/persistence';
+import { EventBus } from '../../../src/events';
+import type { FleetStateChangedEvent } from '../../../src/events';
 import {
   FleetEditError,
   InvalidTransitionError,
@@ -417,5 +419,148 @@ describe('getFleet', () => {
 
   it('throws NotFoundError when the fleet does not exist', () => {
     expect(() => getFleet(makeRepo(), 'nonexistent')).toThrow(NotFoundError);
+  });
+});
+
+// ── event emission ───────────────────────────────────────────────────────────
+
+describe('fleet:stateChanged event emission', () => {
+  function collectEvents(events: EventBus) {
+    const emitted: FleetStateChangedEvent[] = [];
+    events.on('fleet:stateChanged', (e) => emitted.push(e));
+    return emitted;
+  }
+
+  it('startPreparation emits Docked → Preparing', () => {
+    const repo = makeRepo();
+    const events = new EventBus();
+    const emitted = collectEvents(events);
+    const fleet = createFleet(repo, { name: 'A' });
+
+    startPreparation(repo, fleet.id, fleet.version, events);
+
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]).toMatchObject({ fleetId: fleet.id, from: 'Docked', to: 'Preparing' });
+  });
+
+  it('completePreparation emits Preparing → Ready', () => {
+    const repo = makeRepo();
+    const events = new EventBus();
+    const emitted = collectEvents(events);
+    let fleet = createFleet(repo, { name: 'A' });
+    fleet = startPreparation(repo, fleet.id, fleet.version);
+
+    completePreparation(repo, fleet.id, fleet.version, { FUEL: 10 }, events);
+
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]).toMatchObject({ fleetId: fleet.id, from: 'Preparing', to: 'Ready' });
+  });
+
+  it('failPreparation emits Preparing → FailedPreparation', () => {
+    const repo = makeRepo();
+    const events = new EventBus();
+    const emitted = collectEvents(events);
+    let fleet = createFleet(repo, { name: 'A' });
+    fleet = startPreparation(repo, fleet.id, fleet.version);
+
+    failPreparation(repo, fleet.id, fleet.version, 'no fuel', events);
+
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]).toMatchObject({ fleetId: fleet.id, from: 'Preparing', to: 'FailedPreparation' });
+  });
+
+  it('deployFleet emits Ready → Deployed', () => {
+    const repo = makeRepo();
+    const events = new EventBus();
+    const emitted = collectEvents(events);
+    let fleet = createFleet(repo, { name: 'A' });
+    fleet = startPreparation(repo, fleet.id, fleet.version);
+    fleet = completePreparation(repo, fleet.id, fleet.version, {});
+
+    deployFleet(repo, fleet.id, fleet.version, events);
+
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]).toMatchObject({ fleetId: fleet.id, from: 'Ready', to: 'Deployed' });
+  });
+
+  it('enterBattle emits Deployed → InBattle', () => {
+    const repo = makeRepo();
+    const events = new EventBus();
+    const emitted = collectEvents(events);
+    let fleet = createFleet(repo, { name: 'A' });
+    fleet = startPreparation(repo, fleet.id, fleet.version);
+    fleet = completePreparation(repo, fleet.id, fleet.version, {});
+    fleet = deployFleet(repo, fleet.id, fleet.version);
+
+    enterBattle(repo, fleet.id, fleet.version, events);
+
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]).toMatchObject({ fleetId: fleet.id, from: 'Deployed', to: 'InBattle' });
+  });
+
+  it('resolveVictorious emits InBattle → Victorious', () => {
+    const repo = makeRepo();
+    const events = new EventBus();
+    const emitted = collectEvents(events);
+    let fleet = createFleet(repo, { name: 'A' });
+    fleet = startPreparation(repo, fleet.id, fleet.version);
+    fleet = completePreparation(repo, fleet.id, fleet.version, {});
+    fleet = deployFleet(repo, fleet.id, fleet.version);
+    fleet = enterBattle(repo, fleet.id, fleet.version);
+
+    resolveVictorious(repo, fleet.id, fleet.version, events);
+
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]).toMatchObject({ fleetId: fleet.id, from: 'InBattle', to: 'Victorious' });
+  });
+
+  it('resolveDestroyed emits InBattle → Destroyed', () => {
+    const repo = makeRepo();
+    const events = new EventBus();
+    const emitted = collectEvents(events);
+    let fleet = createFleet(repo, { name: 'A' });
+    fleet = startPreparation(repo, fleet.id, fleet.version);
+    fleet = completePreparation(repo, fleet.id, fleet.version, {});
+    fleet = deployFleet(repo, fleet.id, fleet.version);
+    fleet = enterBattle(repo, fleet.id, fleet.version);
+
+    resolveDestroyed(repo, fleet.id, fleet.version, events);
+
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]).toMatchObject({ fleetId: fleet.id, from: 'InBattle', to: 'Destroyed' });
+  });
+
+  it('does not emit when EventBus is not provided', () => {
+    const repo = makeRepo();
+    const events = new EventBus();
+    const emitted = collectEvents(events);
+    const fleet = createFleet(repo, { name: 'A' });
+
+    // Call without passing events
+    startPreparation(repo, fleet.id, fleet.version);
+
+    expect(emitted).toHaveLength(0);
+  });
+
+  it('full lifecycle emits one event per transition', () => {
+    const repo = makeRepo();
+    const events = new EventBus();
+    const emitted = collectEvents(events);
+    let fleet = createFleet(repo, { name: 'A' });
+
+    fleet = startPreparation(repo, fleet.id, fleet.version, events);
+    fleet = completePreparation(repo, fleet.id, fleet.version, { FUEL: 10 }, events);
+    fleet = deployFleet(repo, fleet.id, fleet.version, events);
+    fleet = enterBattle(repo, fleet.id, fleet.version, events);
+    fleet = resolveVictorious(repo, fleet.id, fleet.version, events);
+
+    expect(emitted).toHaveLength(5);
+    expect(emitted.map((e) => `${e.from}→${e.to}`)).toEqual([
+      'Docked→Preparing',
+      'Preparing→Ready',
+      'Ready→Deployed',
+      'Deployed→InBattle',
+      'InBattle→Victorious',
+    ]);
   });
 });
