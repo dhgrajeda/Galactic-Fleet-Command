@@ -29,10 +29,10 @@ export const StartBattleHandler: ICommandHandler = {
 
     // Fleet-first ordering: transition both fleets to InBattle
     if (fleetA.state === 'Deployed') {
-      enterBattle(services.fleets, fleetAId, fleetA.version);
+      enterBattle(services.fleets, fleetAId, fleetA.version, services.events);
     }
     if (fleetB.state === 'Deployed') {
-      enterBattle(services.fleets, fleetBId, fleetB.version);
+      enterBattle(services.fleets, fleetBId, fleetB.version, services.events);
     }
 
     // Create battle record (idempotent — skip if already exists)

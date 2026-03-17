@@ -5,5 +5,4 @@ export type {
   ICommandHandler,
   CommandHandlerServices,
   CommandResult,
-  PostProcessingHook,
 } from './types';

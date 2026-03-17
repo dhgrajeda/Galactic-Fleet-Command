@@ -20,16 +20,16 @@ export const PrepareFleetHandler: ICommandHandler = {
     }
 
     // Fleet-first: transition to Preparing
-    const preparing = startPreparation(services.fleets, fleetId, fleet.version);
+    const preparing = startPreparation(services.fleets, fleetId, fleet.version, services.events);
 
     // Then try to reserve resources
     const resources = requiredResources ?? fleet.requiredResources ?? {};
     try {
       const reserved = reserve(services.resourcePools, resources);
-      completePreparation(services.fleets, fleetId, preparing.version, reserved);
+      completePreparation(services.fleets, fleetId, preparing.version, reserved, services.events);
     } catch (err) {
       const reason = err instanceof InsufficientResourceError ? err.message : 'Resource reservation failed';
-      failPreparation(services.fleets, fleetId, preparing.version, reason);
+      failPreparation(services.fleets, fleetId, preparing.version, reason, services.events);
       return { success: true }; // Command itself succeeded — fleet moved to FailedPreparation
     }
 

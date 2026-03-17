@@ -8,7 +8,6 @@ import type {
   CommandResult,
   ICommandHandler,
   ICommandQueue,
-  PostProcessingHook,
 } from './types';
 
 const RETRY_DELAYS = [0, 100, 500];
@@ -19,11 +18,10 @@ function delay(ms: number): Promise<void> {
 }
 
 /**
- * In-memory command queue with optimistic claim, retry, and post-processing hooks.
+ * In-memory command queue with optimistic claim, retry, and EventBus integration.
  */
 export class InMemoryCommandQueue implements ICommandQueue {
   private readonly handlers = new Map<string, ICommandHandler>();
-  private readonly hooks: PostProcessingHook[] = [];
   private readonly services: CommandHandlerServices;
   private readonly pending: string[] = [];
 
@@ -33,10 +31,6 @@ export class InMemoryCommandQueue implements ICommandQueue {
 
   registerHandler(handler: ICommandHandler): void {
     this.handlers.set(handler.type, handler);
-  }
-
-  onCommandCompleted(hook: PostProcessingHook): void {
-    this.hooks.push(hook);
   }
 
   enqueue(input: Omit<Command, 'id' | 'version' | 'status'>): Command {
@@ -63,7 +57,7 @@ export class InMemoryCommandQueue implements ICommandQueue {
 
   /**
    * Process all pending commands. Resolves when all are done (including any
-   * commands enqueued by post-processing hooks during this flush).
+   * commands enqueued by event listeners during this flush).
    */
   async flush(): Promise<void> {
     while (this.pending.length > 0) {
@@ -125,12 +119,12 @@ export class InMemoryCommandQueue implements ICommandQueue {
       log.info('Command succeeded');
       this.markSucceeded(id);
       const cmd = this.services.commands.getOrThrow(id);
-      for (const hook of this.hooks) {
-        await hook(cmd, this.services);
-      }
+      this.services.events.emit('command:succeeded', { command: cmd });
     } else {
       log.error('Command failed', { error: result.error });
       this.markFailed(id, result.error);
+      const cmd = this.services.commands.getOrThrow(id);
+      this.services.events.emit('command:failed', { command: cmd, error: result.error });
     }
   }
 

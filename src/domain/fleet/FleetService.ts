@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 
+import type { EventBus } from '../../events';
 import type { Fleet, FleetRepository, Ship } from '../../persistence';
 
 import { assertValidTransition, InvalidTransitionError, isTerminal } from './stateMachine';
@@ -79,34 +80,47 @@ export function updateFleet(
   return result;
 }
 
-function transitionFleet(
-  repo: FleetRepository,
-  id: string,
-  expectedVersion: number,
-  targetState: Fleet['state'],
-  eventType: string,
-  eventData?: Record<string, unknown>,
-  extraFields?: Partial<Fleet>,
-): Fleet {
+interface TransitionOptions {
+  repo: FleetRepository;
+  id: string;
+  expectedVersion: number;
+  targetState: Fleet['state'];
+  eventType: string;
+  eventData?: Record<string, unknown>;
+  extraFields?: Partial<Fleet>;
+  events?: EventBus;
+}
+
+function transitionFleet(opts: TransitionOptions): Fleet {
   let result!: Fleet;
-  repo.update(id, expectedVersion, (fleet) => {
+  let previousState!: Fleet['state'];
+
+  opts.repo.update(opts.id, opts.expectedVersion, (fleet) => {
     if (isTerminal(fleet.state)) {
       throw new FleetEditError(`Fleet is in terminal state ${fleet.state}`);
     }
-    assertValidTransition(fleet.state, targetState);
+    assertValidTransition(fleet.state, opts.targetState);
+    previousState = fleet.state;
     const ts = now();
     result = {
       ...fleet,
-      state: targetState,
+      state: opts.targetState,
       updatedAt: ts,
-      ...extraFields,
+      ...opts.extraFields,
       timeline: [
         ...fleet.timeline,
-        { type: eventType, timestamp: ts, ...(eventData && { data: eventData }) },
+        { type: opts.eventType, timestamp: ts, ...(opts.eventData && { data: opts.eventData }) },
       ],
     };
     return result;
   });
+
+  opts.events?.emit('fleet:stateChanged', {
+    fleetId: opts.id,
+    from: previousState,
+    to: opts.targetState,
+  });
+
   return result;
 }
 
@@ -114,8 +128,9 @@ export function startPreparation(
   repo: FleetRepository,
   id: string,
   expectedVersion: number,
+  events?: EventBus,
 ): Fleet {
-  return transitionFleet(repo, id, expectedVersion, 'Preparing', 'FleetPreparationStarted');
+  return transitionFleet({ repo, id, expectedVersion, targetState: 'Preparing', eventType: 'FleetPreparationStarted', events });
 }
 
 export function completePreparation(
@@ -123,16 +138,18 @@ export function completePreparation(
   id: string,
   expectedVersion: number,
   reservedResources: Record<string, number>,
+  events?: EventBus,
 ): Fleet {
-  return transitionFleet(
+  return transitionFleet({
     repo,
     id,
     expectedVersion,
-    'Ready',
-    'FleetReady',
-    { reservedResources },
-    { reservedResources },
-  );
+    targetState: 'Ready',
+    eventType: 'FleetReady',
+    eventData: { reservedResources },
+    extraFields: { reservedResources },
+    events,
+  });
 }
 
 export function failPreparation(
@@ -140,40 +157,43 @@ export function failPreparation(
   id: string,
   expectedVersion: number,
   reason: string,
+  events?: EventBus,
 ): Fleet {
-  return transitionFleet(repo, id, expectedVersion, 'FailedPreparation', 'FleetPreparationFailed', {
-    reason,
-  });
+  return transitionFleet({ repo, id, expectedVersion, targetState: 'FailedPreparation', eventType: 'FleetPreparationFailed', eventData: { reason }, events });
 }
 
 export function deployFleet(
   repo: FleetRepository,
   id: string,
   expectedVersion: number,
+  events?: EventBus,
 ): Fleet {
-  return transitionFleet(repo, id, expectedVersion, 'Deployed', 'FleetDeployed');
+  return transitionFleet({ repo, id, expectedVersion, targetState: 'Deployed', eventType: 'FleetDeployed', events });
 }
 
 export function enterBattle(
   repo: FleetRepository,
   id: string,
   expectedVersion: number,
+  events?: EventBus,
 ): Fleet {
-  return transitionFleet(repo, id, expectedVersion, 'InBattle', 'FleetEnteredBattle');
+  return transitionFleet({ repo, id, expectedVersion, targetState: 'InBattle', eventType: 'FleetEnteredBattle', events });
 }
 
 export function resolveVictorious(
   repo: FleetRepository,
   id: string,
   expectedVersion: number,
+  events?: EventBus,
 ): Fleet {
-  return transitionFleet(repo, id, expectedVersion, 'Victorious', 'FleetVictorious');
+  return transitionFleet({ repo, id, expectedVersion, targetState: 'Victorious', eventType: 'FleetVictorious', events });
 }
 
 export function resolveDestroyed(
   repo: FleetRepository,
   id: string,
   expectedVersion: number,
+  events?: EventBus,
 ): Fleet {
-  return transitionFleet(repo, id, expectedVersion, 'Destroyed', 'FleetDestroyed');
+  return transitionFleet({ repo, id, expectedVersion, targetState: 'Destroyed', eventType: 'FleetDestroyed', events });
 }

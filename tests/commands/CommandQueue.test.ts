@@ -1,5 +1,6 @@
 import { createPersistenceContext } from '../../src/persistence/context';
 import { seedResourcePools } from '../../src/domain/resources';
+import { EventBus } from '../../src/events';
 import { NoopLogger } from '../../src/logger';
 import { InMemoryCommandQueue } from '../../src/commands/CommandQueue';
 import type { ICommandHandler, CommandHandlerServices } from '../../src/commands/types';
@@ -8,15 +9,17 @@ import type { Command } from '../../src/persistence';
 function makeQueue() {
   const ctx = createPersistenceContext();
   seedResourcePools(ctx.resourcePools);
+  const events = new EventBus();
   const services: CommandHandlerServices = {
     commands: ctx.commands,
     fleets: ctx.fleets,
     resourcePools: ctx.resourcePools,
     battles: ctx.battles,
     logger: new NoopLogger(),
+    events,
   };
   const queue = new InMemoryCommandQueue(services);
-  return { queue, services, ctx };
+  return { queue, services, ctx, events };
 }
 
 function makeHandler(type: string, fn?: (cmd: Command, svc: CommandHandlerServices) => void): ICommandHandler {
@@ -82,23 +85,23 @@ describe('InMemoryCommandQueue', () => {
     expect(result?.status).toBe('Failed');
   });
 
-  it('fires post-processing hooks on success', async () => {
-    const { queue } = makeQueue();
+  it('emits command:succeeded event on success', async () => {
+    const { queue, events } = makeQueue();
     queue.registerHandler(makeHandler('TestCommand'));
 
-    const hookCalls: string[] = [];
-    queue.onCommandCompleted((cmd) => {
-      hookCalls.push(cmd.type);
+    const succeededTypes: string[] = [];
+    events.on('command:succeeded', (event) => {
+      succeededTypes.push(event.command.type);
     });
 
     queue.enqueue({ type: 'TestCommand', payload: {} });
     await queue.flush();
 
-    expect(hookCalls).toEqual(['TestCommand']);
+    expect(succeededTypes).toEqual(['TestCommand']);
   });
 
-  it('does not fire hooks on failure', async () => {
-    const { queue } = makeQueue();
+  it('emits command:failed event on failure, not command:succeeded', async () => {
+    const { queue, events } = makeQueue();
     queue.registerHandler({
       type: 'FailCommand',
       handle() {
@@ -106,24 +109,29 @@ describe('InMemoryCommandQueue', () => {
       },
     });
 
-    const hookCalls: string[] = [];
-    queue.onCommandCompleted((cmd) => {
-      hookCalls.push(cmd.type);
+    const succeededTypes: string[] = [];
+    const failedTypes: string[] = [];
+    events.on('command:succeeded', (event) => {
+      succeededTypes.push(event.command.type);
+    });
+    events.on('command:failed', (event) => {
+      failedTypes.push(event.command.type);
     });
 
     queue.enqueue({ type: 'FailCommand', payload: {} });
     await queue.flush();
 
-    expect(hookCalls).toEqual([]);
+    expect(succeededTypes).toEqual([]);
+    expect(failedTypes).toEqual(['FailCommand']);
   });
 
-  it('processes commands enqueued by hooks during flush', async () => {
-    const { queue } = makeQueue();
+  it('processes commands enqueued by event listeners during flush', async () => {
+    const { queue, events } = makeQueue();
     queue.registerHandler(makeHandler('FirstCommand'));
     queue.registerHandler(makeHandler('FollowUpCommand'));
 
-    queue.onCommandCompleted((cmd, svc) => {
-      if (cmd.type === 'FirstCommand') {
+    events.on('command:succeeded', (event) => {
+      if (event.command.type === 'FirstCommand') {
         queue.enqueue({ type: 'FollowUpCommand', payload: {} });
       }
     });

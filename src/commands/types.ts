@@ -1,3 +1,4 @@
+import type { EventBus } from '../events';
 import type { Logger } from '../logger';
 import type { BattleRepository, Command, CommandRepository , FleetRepository , ResourcePoolRepository } from '../persistence';
 
@@ -10,6 +11,7 @@ export interface CommandHandlerServices {
   resourcePools: ResourcePoolRepository;
   battles: BattleRepository;
   logger: Logger;
+  events: EventBus;
 }
 
 /**
@@ -29,17 +31,11 @@ export interface ICommandHandler {
 }
 
 /**
- * Hook called after a command completes successfully.
- */
-export type PostProcessingHook = (command: Command, services: CommandHandlerServices) => void | Promise<void>;
-
-/**
  * Interface for a command queue — abstracted for multi-instance readiness.
  */
 export interface ICommandQueue {
   enqueue(command: Omit<Command, 'id' | 'version' | 'status'>): Command;
   registerHandler(handler: ICommandHandler): void;
-  onCommandCompleted(hook: PostProcessingHook): void;
   flush(): Promise<void>;
   getCommand(id: string): Command | undefined;
   getAllCommands(): Command[];

@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(npm test:*)",
-      "Bash(npx jest:*)"
+      "Bash(npx jest:*)",
+      "Bash(npm run:*)"
     ]
   }
 }

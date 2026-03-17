@@ -26,8 +26,8 @@ export const ResolveBattleHandler: ICommandHandler = {
     const winner = services.fleets.getOrThrow(winnerId);
     const loser = services.fleets.getOrThrow(loserId);
 
-    resolveVictorious(services.fleets, winnerId, winner.version);
-    resolveDestroyed(services.fleets, loserId, loser.version);
+    resolveVictorious(services.fleets, winnerId, winner.version, services.events);
+    resolveDestroyed(services.fleets, loserId, loser.version, services.events);
 
     // Update battle record
     services.battles.update(battle.id, battle.version, (b) => ({

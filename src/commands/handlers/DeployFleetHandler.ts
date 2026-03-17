@@ -16,7 +16,7 @@ export const DeployFleetHandler: ICommandHandler = {
       return { success: true };
     }
 
-    deployFleet(services.fleets, fleetId, fleet.version);
+    deployFleet(services.fleets, fleetId, fleet.version, services.events);
     return { success: true };
   },
 };

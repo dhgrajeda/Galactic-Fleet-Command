@@ -7,10 +7,11 @@
 
 import { createApp } from '../src/app';
 import http from 'http';
+import { NoopLogger } from '../src/logger';
 
 const PORT = 0; // let OS pick a free port
 
-const app = createApp();
+const app = createApp({ logger: new NoopLogger() });
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 

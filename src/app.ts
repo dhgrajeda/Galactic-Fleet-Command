@@ -4,6 +4,7 @@ import { createCachingFleetRepository } from './cache/CachingFleetRepository';
 import { createCommandQueue } from './commands/createCommandQueue';
 import type { CommandHandlerServices } from './commands/types';
 import { seedResourcePools } from './domain/resources';
+import { EventBus } from './events';
 import type { Logger } from './logger';
 import { ConsoleLogger, NoopLogger } from './logger';
 import { createPersistenceContext } from './persistence/context';
@@ -24,12 +25,14 @@ export function createApp(options?: { logger?: Logger }) {
   const logger = options?.logger ?? defaultLogger;
 
   // Services
+  const events = new EventBus();
   const services: CommandHandlerServices = {
     commands: ctx.commands,
     fleets: cachedFleets,
     resourcePools: ctx.resourcePools,
     battles: ctx.battles,
     logger,
+    events,
   };
 
   // Command Queue
