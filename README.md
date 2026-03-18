@@ -7,6 +7,7 @@
 - [Concurrency Strategy](#concurrency-strategy)
 - [Idempotency Strategy](#idempotency-strategy)
 - [Command Queue](#command-queue)
+- [Observability](#observability)
 - [Battle Resolution](#battle-resolution)
 - [Production Improvements](#production-improvements)
   - [ETags for API Concurrency](#etags-for-api-concurrency)
@@ -159,7 +160,7 @@ Resource reservation uses **optimistic locking** (version field on every entity)
 - Transactional boundary: Was not considered as this project uses an in-memory data store that does not support transactions and Node.js has no transactional support. In short - too complicated for this project.
 - Saga: This could have been an option, specially since transactions were not an option, but the complexity of the compensating logic seemed hard to get right for the timeline, like handling failures of the compensation step.
 
-# idempotency Strategy
+# Idempotency Strategy
 **Problem:** A command worker may crash after partially executing a command but before marking it Succeeded. On restart, the command is re-queued and executed again. This must not double-reserve resources or double-transition fleet state.
 
 **Approach: idempotency Key.**
@@ -189,7 +190,7 @@ Fleet operations like resource reservation and deployment are "workflow steps" �
   4. Retry with backoff — On ConcurrencyError, retry up to 3 times with delays of [0ms, 100ms, 500ms]
   5. Outcome — Mark the command Succeeded or Failed and publish the result to the EventBroker
 
-  Event-driven chaining:
+  **Event-driven chaining:**
 
   Handlers don't enqueue follow-up commands directly. Instead, the EventBroker wires automation listeners that react to
   outcomes:
@@ -200,6 +201,18 @@ Fleet operations like resource reservation and deployment are "workflow steps" �
 
 - `DeployFleet` success → add fleet to matchmaker pool → if pair found, enqueue `StartBattle`
 - `StartBattle` success → enqueue `ResolveBattle`
+
+# Observability
+This project has a lightweight logger that acts as a foundation for a more robust, production-grade logger. 
+
+- **Logger interface:** abstraction with info, warn, error, debug + structured LogContext (key-value metadata)
+- **child() pattern:** creates scoped loggers that inherit parent context. For example, the CommandQueue creates a child
+logger with { commandId, commandType }, so every log within that command's processing carries those fields
+ automatically
+- **ConsoleLogger:** writes structured JSON lines to stdout/stderr, which is grep-friendly and easily piped to log aggregators
+- **NoopLogger:** silent logger for tests, so test output stays clean
+- **Dependency injection:** createApp() accepts an optional logger, making it swappable without touching domain code
+
 
 # Battle Resolution
 
@@ -227,7 +240,7 @@ The idempotency fence in each handler remains critical — brokers guarantee *at
 This project assumes low contention. In production, different  strategies may need to be considered.
 
 ### Resource reservation
-In a production environment, we may want to enforce an all-or-nothing strategy when reserving resources. If multiple resources are needed to build a ship, getting a partial amount might be a waste of money. In this case two strategies would be considered that were previously mentioned: **Saga and transactional boundaries**.
+In a production environment, we may want to enforce an all-or-nothing strategy when reserving resources. If multiple resources are needed to build a ship, getting a partial amount might be unacceptable. In this case two strategies would be considered that were previously mentioned: **Saga and transactional boundaries**.
 
 Here's a table that compares the two strategies
 
@@ -276,6 +289,6 @@ Caching Layers
 
 | Concern | Current | Production |
 |---|---|---|
-| Observability | `console.log` | Structured logging (pino), metrics (Prometheus), tracing (OpenTelemetry) |
+| Observability | `console.log` | Logging (pino), metrics (Prometheus), tracing (OpenTelemetry) |
 | Auth | None | JWT / API key middleware |
 | Rate limiting | None | Express rate limiter middleware |
