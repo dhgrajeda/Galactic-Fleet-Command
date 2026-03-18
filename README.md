@@ -18,7 +18,7 @@
 
 
 # Architecture
-Galactic Fleet Command is an event-driven strategy platform. Factions assemble fleets, prepare them by reserving scarce galaxy-wide resources, deploy them on missions, and battle other fleets. The system is designed so that real infrastructure (database, message bus) can be swapped in without changing domain logic.
+Galactic Fleet Command is an event-driven strategy platform. Factions assemble fleets, prepare them by reserving scarce galaxy-wide resources, deploy them on missions, and battle other fleets. The system is designed so that real infrastructure (database, message broker) can be swapped in without changing domain logic.
 
 **Key system properties:**
 - Concurrency-safe resource reservation
