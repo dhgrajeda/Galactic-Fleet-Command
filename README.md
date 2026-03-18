@@ -1,6 +1,5 @@
 # Table of Contents
 
-- [Running Locally](#running-locally)
 - [Architecture](#architecture)
   - [Domain Model](#domain-model)
 - [Concurrency Strategy](#concurrency-strategy)
@@ -12,34 +11,10 @@
   - [Persistence](#persistence)
   - [Command Queue](#command-queue-1)
   - [Concurrency in a Distributed System](#concurrency-in-a-distributed-system)
-- [Project Structure](#project-structure)
+- [Running Locally](#running-locally)
+  - [Project Structure](#project-structure)
 
----
 
-# Running Locally
-
-### Install and start
-
-```bash
-npm install
-npm run dev        # hot-reload dev server on port 3000
-# or
-npm run build && node dist/index.js
-```
-
-### Run tests
-
-```bash
-npm test
-npm test -- --coverage   # with coverage report
-```
-
-### Sample run
-```bash
-npx ts-node scripts/demo-battle.ts
-```
-
-[Click here](./COMMANDS.md) for more details on running commands.
 
 
 # Architecture
@@ -190,19 +165,13 @@ The current system runs as a single Node.js process, so "concurrency" means inte
 
 **Resource reservation** needs no changes. Multiple instances calling `reserve()` concurrently will each attempt `UPDATE resource_pool SET reserved = reserved + N WHERE version = V`. One succeeds, others get `ConcurrencyError` and retry with a fresh read. The bounded retry with exponential backoff (already implemented) prevents contention storms.
 
-**Affected by the following:** 
+**Things to consider when choosing strategies:** 
 - Optimistic Locking: Conflicts are rare, retries are cheap
 - Pessimistic Locking: Conflicts are frequent, operations are short
 - Atomic CAS: Single-field updates, high-throughput counters
 - Transactional Boundary: Multiple entities must succeed or fail together
 
-**Matchmaker** is the hardest to distribute. The in-memory version counter doesn't work across instances. Options (ranked by recommendation):
-
-1. **Redis Lua script**: Atomically add-to-pool-and-match in a single Redis command. O(1), strongly consistent, zero contention.
-2. **Database row locking**: `SELECT FOR UPDATE` on a matchmaking pool table. Consistent but adds latency.
-3. **Optimistic DB matching**: Write fleet to pool table, then try to atomically claim a pair with a conditional update. Same pattern as the current implementation, backed by DB.
-
-### Other Production Considerations
+## Other Production Considerations
 
 | Concern | Current | Production |
 |---|---|---|
@@ -211,7 +180,32 @@ The current system runs as a single Node.js process, so "concurrency" means inte
 | Resource pools | Hardcoded totals | Admin API to configure pool sizes |
 | Rate limiting | None | Express rate limiter middleware |
 
-## Project structure
+# Running Locally
+
+### Install and start
+
+```bash
+npm install
+npm run dev        # hot-reload dev server on port 3000
+# or
+npm run build && node dist/index.js
+```
+
+### Run tests
+
+```bash
+npm test
+npm test -- --coverage   # with coverage report
+```
+
+### Sample run
+```bash
+npx ts-node scripts/demo-battle.ts
+```
+
+[Click here](./COMMANDS.md) for more details on running commands.
+
+# Project structure
 
 ```
 src/
