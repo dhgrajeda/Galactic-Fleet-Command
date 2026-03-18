@@ -15,8 +15,7 @@ Derived from [`README.md`](./README.md).
 | TECH-002 | All persistence is in-memory (no external databases) | Must | Done |
 | TECH-003 | Service exposes a REST API | Must | In Progress |
 | TECH-004 | Automated tests are included | Must | In Progress |
-| TECH-005 | LRU cache must **not** use an off-the-shelf LRU library | Must | Open |
-| TECH-006 | Command queue must **not** use a real message broker (simulated in-memory) | Must | Open |
+| TECH-005 | Command queue must **not** use a real message broker (simulated in-memory) | Must | Open |
 
 ---
 
@@ -106,19 +105,7 @@ Derived from [`README.md`](./README.md).
 
 ---
 
-## 10. LRU Cache
-
-| ID | Requirement | Priority | Status |
-|----|-------------|----------|--------|
-| LRU-001 | LRU cache is implemented from scratch with O(1) get and put operations (doubly-linked list + hashmap) | Must | Open |
-| LRU-002 | LRU cache is used on at least one read path (e.g. `GET /fleets/:id` or resource availability) | Must | Open |
-| LRU-003 | Unit tests verify correct eviction order | Must | Open |
-| LRU-004 | Unit tests verify O(1) structural assumption (e.g. list + map are both updated on every operation) | Must | Open |
-| LRU-005 | Unit tests verify that accessed or updated entries are moved to most-recently-used position | Must | Open |
-
----
-
-## 11. Events & Timeline
+## 10. Events & Timeline
 
 | ID | Requirement | Priority | Status |
 |----|-------------|----------|--------|
@@ -128,7 +115,7 @@ Derived from [`README.md`](./README.md).
 
 ---
 
-## 12. Tests
+## 11. Tests
 
 | ID | Requirement | Priority | Status |
 |----|-------------|----------|--------|
@@ -136,12 +123,11 @@ Derived from [`README.md`](./README.md).
 | TST-002 | Unit tests cover invalid/rejected fleet state machine transitions | Must | Done |
 | TST-003 | Unit tests cover resource reservation concurrency behavior (CONC-002) | Must | Open |
 | TST-004 | Unit tests cover command retry behavior | Must | Open |
-| TST-005 | Unit tests cover LRU cache eviction, O(1) structure, and MRU updates (LRU-003/004/005) | Must | Open |
-| TST-006 | At least one integration-style test exists (e.g. full command lifecycle via HTTP) | Must | Open |
+| TST-005 | At least one integration-style test exists (e.g. full command lifecycle via HTTP) | Must | Open |
 
 ---
 
-## 13. Deliverables
+## 12. Deliverables
 
 | ID | Requirement | Priority | Status |
 |----|-------------|----------|--------|
@@ -159,7 +145,7 @@ Derived from [`README.md`](./README.md).
 
 | Category | Total | Done | In Progress | Open |
 |----------|-------|------|-------------|------|
-| Tech Stack | 6 | 2 | 1 | 3 |
+| Tech Stack | 5 | 2 | 1 | 2 |
 | Fleet Domain | 8 | 8 | 0 | 0 |
 | Resources | 5 | 3 | 0 | 2 |
 | API — Fleets | 4 | 0 | 0 | 4 |
@@ -168,8 +154,7 @@ Derived from [`README.md`](./README.md).
 | Command Processing | 6 | 0 | 0 | 6 |
 | Idempotency | 2 | 0 | 0 | 2 |
 | Concurrency | 2 | 0 | 0 | 2 |
-| LRU Cache | 5 | 0 | 0 | 5 |
 | Events & Timeline | 3 | 2 | 0 | 1 |
-| Tests | 6 | 2 | 0 | 4 |
+| Tests | 5 | 2 | 0 | 3 |
 | Deliverables | 7 | 1 | 0 | 6 |
-| **Total** | **57** | **19** | **1** | **37** |
+| **Total** | **50** | **19** | **1** | **30** |

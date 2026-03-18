@@ -1,9 +1,10 @@
 import request from 'supertest';
 import { createApp } from '../../src/app';
+import { NoopLogger } from '../../src/logger';
 
 describe('Resource Routes', () => {
   it('GET /resources returns all resource pools', async () => {
-    const app = createApp();
+    const app = createApp({ logger: new NoopLogger() });
     const res = await request(app).get('/resources');
 
     expect(res.status).toBe(200);
@@ -14,7 +15,7 @@ describe('Resource Routes', () => {
   });
 
   it('each resource has total, reserved, and available', async () => {
-    const app = createApp();
+    const app = createApp({ logger: new NoopLogger() });
     const res = await request(app).get('/resources');
 
     for (const resource of res.body) {

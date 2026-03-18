@@ -119,12 +119,12 @@ export class InMemoryCommandQueue implements ICommandQueue {
       log.info('Command succeeded');
       this.markSucceeded(id);
       const cmd = this.services.commands.getOrThrow(id);
-      this.services.events.emit('command:succeeded', { command: cmd });
+      this.services.events.publish('command:succeeded', { command: cmd });
     } else {
       log.error('Command failed', { error: result.error });
       this.markFailed(id, result.error);
       const cmd = this.services.commands.getOrThrow(id);
-      this.services.events.emit('command:failed', { command: cmd, error: result.error });
+      this.services.events.publish('command:failed', { command: cmd, error: result.error });
     }
   }
 

@@ -37,7 +37,6 @@ src/
     index.ts              # Re-exports
   domain/                 # (to build) Fleet state machine, resource reservation service, command handlers
   commands/               # (to build) Command queue, workers, command types
-  cache/                  # (to build) LRU cache implementation
   routes/                 # (to build) Express route handlers
 tests/
   health.test.ts
@@ -75,7 +74,6 @@ Docked → Preparing → Ready → Deployed → InBattle → Victorious | Destro
 
 ## Constraints
 
-- **NO off-the-shelf LRU** — implement O(1) LRU from scratch (doubly-linked list + HashMap)
 - **NO real message queue** — simulate in-memory
 - **In-memory persistence only** — no external DB
 

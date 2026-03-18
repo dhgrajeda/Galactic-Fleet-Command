@@ -1,9 +1,10 @@
 import request from 'supertest';
 import { createApp } from '../../src/app';
+import { NoopLogger } from '../../src/logger';
 
 describe('Fleet Lifecycle Integration', () => {
   it('full lifecycle: create → prepare → deploy → battle → resolution', async () => {
-    const app = createApp();
+    const app = createApp({ logger: new NoopLogger() });
 
     // Create two fleets
     const fleetA = await request(app).post('/fleets').send({
@@ -72,7 +73,7 @@ describe('Fleet Lifecycle Integration', () => {
   });
 
   it('preparation fails when resources are insufficient', async () => {
-    const app = createApp();
+    const app = createApp({ logger: new NoopLogger() });
 
     const fleet = await request(app).post('/fleets').send({ name: 'Greedy Fleet' });
 
@@ -88,7 +89,7 @@ describe('Fleet Lifecycle Integration', () => {
   });
 
   it('fleet timeline records all events', async () => {
-    const app = createApp();
+    const app = createApp({ logger: new NoopLogger() });
 
     const fleet = await request(app).post('/fleets').send({ name: 'Timeline Fleet' });
 

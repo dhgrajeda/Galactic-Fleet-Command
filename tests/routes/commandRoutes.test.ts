@@ -1,9 +1,10 @@
 import request from 'supertest';
 import { createApp } from '../../src/app';
+import { NoopLogger } from '../../src/logger';
 
 describe('Command Routes', () => {
   it('POST /commands returns 202 with queued command', async () => {
-    const app = createApp();
+    const app = createApp({ logger: new NoopLogger() });
     // Create a fleet first
     const fleet = await request(app).post('/fleets').send({ name: 'Alpha' });
 
@@ -19,13 +20,13 @@ describe('Command Routes', () => {
   });
 
   it('POST /commands returns 400 when type is missing', async () => {
-    const app = createApp();
+    const app = createApp({ logger: new NoopLogger() });
     const res = await request(app).post('/commands').send({ payload: {} });
     expect(res.status).toBe(400);
   });
 
   it('POST /commands returns 400 for invalid type', async () => {
-    const app = createApp();
+    const app = createApp({ logger: new NoopLogger() });
     const res = await request(app).post('/commands').send({
       type: 'InvalidType',
       payload: {},
@@ -34,20 +35,20 @@ describe('Command Routes', () => {
   });
 
   it('GET /commands returns array', async () => {
-    const app = createApp();
+    const app = createApp({ logger: new NoopLogger() });
     const res = await request(app).get('/commands');
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
   });
 
   it('GET /commands/:id returns 404 for unknown id', async () => {
-    const app = createApp();
+    const app = createApp({ logger: new NoopLogger() });
     const res = await request(app).get('/commands/nonexistent');
     expect(res.status).toBe(404);
   });
 
   it('GET /commands/:id returns the command', async () => {
-    const app = createApp();
+    const app = createApp({ logger: new NoopLogger() });
     const fleet = await request(app).post('/fleets').send({ name: 'A' });
     const cmd = await request(app).post('/commands').send({
       type: 'PrepareFleet',

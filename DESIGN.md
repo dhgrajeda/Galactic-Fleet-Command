@@ -16,8 +16,7 @@
    - 5.2 [Idempotency Strategy](#52-idempotency-strategy)
    - 5.3 [Event Storage Strategy](#53-event-storage-strategy)
    - 5.4 [Command Processing Architecture](#54-command-processing-architecture)
-   - 5.5 [LRU Cache Design](#55-lru-cache-design)
-   - 5.6 [Resource Reservation Flow](#56-resource-reservation-flow)
+   - 5.5 [Resource Reservation Flow](#55-resource-reservation-flow)
 6. [Data Flow Diagrams](#6-data-flow-diagrams)
 7. [Error Taxonomy](#7-error-taxonomy)
 8. [Testing Requirements](#8-testing-requirements)
@@ -54,8 +53,8 @@ Galactic Fleet Command is a backend service for a turn-based strategy platform. 
 ┌──────────▼──────────┐  ┌────────────▼──────────────┐
 │    Domain Layer     │  │     Infrastructure Layer   │
 │  State machine,     │  │  InMemoryRepository,       │
-│  business rules,    │  │  LRU Cache,                │
-│  domain events      │  │  In-memory command queue   │
+│  business rules,    │  │  In-memory command queue   │
+│  domain events      │  │                            │
 └──────────┬──────────┘  └────────────┬───────────────┘
            │                          │
 ┌──────────▼──────────────────────────▼───────────────┐
@@ -302,7 +301,6 @@ Contexts communicate through their repository interfaces and domain service cont
 |------|-------|---------------|
 | `ResourceReservationService` | Domain | Reserve / release resources across multiple pools with retry |
 | `InsufficientResourcesError` | Domain | Thrown when a pool cannot satisfy a reservation request |
-| `LruCache<K, V>` | Infrastructure | O(1) LRU cache (doubly-linked list + hashmap) |
 | `CommandQueue` | Infrastructure | In-memory FIFO queue with async worker dispatch |
 | `PrepareFleetCommandHandler` | Application | Orchestrates fleet prep + resource reservation |
 | `DeployFleetCommandHandler` | Application | Orchestrates fleet deployment |
@@ -614,57 +612,7 @@ worker.processNext():
 
 ---
 
-### 5.5 LRU Cache Design
-
-**Problem:** Frequently read entities (fleet read model) hit the in-memory store on every request. An LRU cache reduces repeated map lookups and provides a controlled read-path.
-
-**Constraint:** No off-the-shelf LRU library — must be implemented from scratch.
-
-#### Chosen Implementation: Doubly-Linked List + HashMap
-
-**Why O(1)?**
-- A plain array or singly-linked list requires O(n) scan to find and re-order entries.
-- A doubly-linked list allows O(1) node removal given a pointer to the node.
-- A HashMap provides O(1) key→node lookup.
-- Together: get = O(1) lookup + O(1) move-to-front; put = O(1) insert or O(1) evict-tail + insert.
-
-```
-LruCache<K, V>
-├── capacity: number
-├── map: Map<K, Node<K,V>>    ← O(1) key → node lookup
-├── head: Node                ← most recently used sentinel
-└── tail: Node                ← least recently used sentinel
-
-Node<K, V>
-├── key: K
-├── value: V
-├── prev: Node | null
-└── next: Node | null
-
-get(key):
-  node = map.get(key)          // O(1)
-  if not found: return undefined
-  moveToFront(node)            // O(1) pointer rewire
-  return node.value
-
-put(key, value):
-  if map.has(key):
-    node = map.get(key)        // O(1)
-    node.value = value
-    moveToFront(node)          // O(1)
-  else:
-    if map.size === capacity:
-      evict()                  // O(1) remove tail
-    node = new Node(key, value)
-    insertAtFront(node)        // O(1)
-    map.set(key, node)         // O(1)
-```
-
-**Cache invalidation:** Fleet cache entries are invalidated (deleted) whenever a fleet is written through `FleetService`. This is a write-through invalidation strategy — simpler than write-through update, and correct for an in-memory store where writes are cheap.
-
----
-
-### 5.6 Resource Reservation Flow
+### 5.5 Resource Reservation Flow
 
 The full flow for `PrepareFleetCommand`, showing how Fleet Context and Resource Context interact:
 
@@ -764,15 +712,6 @@ The README mandates specific test coverage. This section records the required te
 - All invalid transitions rejected with `InvalidTransitionError`
 - Terminal state guard prevents mutation after `Victorious` / `Destroyed`
 
-### Unit Tests — LRU Cache
-The README specifically requires three structural proofs:
-
-| Test | What to verify |
-|------|---------------|
-| Eviction order | After filling the cache to capacity and adding one more entry, the least-recently-used entry is evicted |
-| O(1) structural assumption | After every `get` and `put`, both the internal `Map` and the doubly-linked list have been updated (no full scans) |
-| MRU on access | A `get` on an existing entry moves it to the most-recently-used position, preventing it from being evicted next |
-
 ### Unit Tests — Concurrency / Resource Reservation
 The README calls out a specific scenario: **two commands attempting to reserve overlapping resources concurrently must not produce over-allocation.**
 
@@ -824,7 +763,6 @@ GET  /fleets/:id/timeline  → 200, events: [FleetCreated, FleetPreparationStart
 | **Optimistic locking** | `version` field + `ConcurrencyError` | `_etag` (Cosmos) or `rowVersion` (SQL) — same contract, zero domain change |
 | **Command queue** | `setImmediate` + array | Azure Service Bus (FIFO queues, dead-letter, at-least-once delivery) |
 | **Idempotency** | Command-ID deduplication + state guards (no client key contract) | Command table in Cosmos/SQL is authoritative; workers query `status` before re-executing; reservation fence stored in same DB as commands |
-| **LRU cache** | In-process `LruCache` | Azure Cache for Redis; same interface, remote backend |
 | **Events / timeline** | Embedded array on entity | Dedicated events table or Cosmos change feed; enables cross-fleet event queries |
 | **Concurrency** | Optimistic version check in Node.js | Same strategy at DB level; Cosmos uses `_etag` natively |
 | **Workers** | `setImmediate` in same process | Azure Functions or dedicated worker service consuming Service Bus |

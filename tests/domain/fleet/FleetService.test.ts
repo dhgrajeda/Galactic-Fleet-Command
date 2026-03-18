@@ -1,5 +1,5 @@
 import { ConcurrencyError, NotFoundError, createInMemoryFleetRepository } from '../../../src/persistence';
-import { EventBus } from '../../../src/events';
+import { EventBroker } from '../../../src/events';
 import type { FleetStateChangedEvent } from '../../../src/events';
 import {
   FleetEditError,
@@ -425,15 +425,15 @@ describe('getFleet', () => {
 // ── event emission ───────────────────────────────────────────────────────────
 
 describe('fleet:stateChanged event emission', () => {
-  function collectEvents(events: EventBus) {
+  function collectEvents(events: EventBroker) {
     const emitted: FleetStateChangedEvent[] = [];
-    events.on('fleet:stateChanged', (e) => emitted.push(e));
+    events.subscribe('fleet:stateChanged', (e) => emitted.push(e));
     return emitted;
   }
 
   it('startPreparation emits Docked → Preparing', () => {
     const repo = makeRepo();
-    const events = new EventBus();
+    const events = new EventBroker();
     const emitted = collectEvents(events);
     const fleet = createFleet(repo, { name: 'A' });
 
@@ -445,7 +445,7 @@ describe('fleet:stateChanged event emission', () => {
 
   it('completePreparation emits Preparing → Ready', () => {
     const repo = makeRepo();
-    const events = new EventBus();
+    const events = new EventBroker();
     const emitted = collectEvents(events);
     let fleet = createFleet(repo, { name: 'A' });
     fleet = startPreparation(repo, fleet.id, fleet.version);
@@ -458,7 +458,7 @@ describe('fleet:stateChanged event emission', () => {
 
   it('failPreparation emits Preparing → FailedPreparation', () => {
     const repo = makeRepo();
-    const events = new EventBus();
+    const events = new EventBroker();
     const emitted = collectEvents(events);
     let fleet = createFleet(repo, { name: 'A' });
     fleet = startPreparation(repo, fleet.id, fleet.version);
@@ -471,7 +471,7 @@ describe('fleet:stateChanged event emission', () => {
 
   it('deployFleet emits Ready → Deployed', () => {
     const repo = makeRepo();
-    const events = new EventBus();
+    const events = new EventBroker();
     const emitted = collectEvents(events);
     let fleet = createFleet(repo, { name: 'A' });
     fleet = startPreparation(repo, fleet.id, fleet.version);
@@ -485,7 +485,7 @@ describe('fleet:stateChanged event emission', () => {
 
   it('enterBattle emits Deployed → InBattle', () => {
     const repo = makeRepo();
-    const events = new EventBus();
+    const events = new EventBroker();
     const emitted = collectEvents(events);
     let fleet = createFleet(repo, { name: 'A' });
     fleet = startPreparation(repo, fleet.id, fleet.version);
@@ -500,7 +500,7 @@ describe('fleet:stateChanged event emission', () => {
 
   it('resolveVictorious emits InBattle → Victorious', () => {
     const repo = makeRepo();
-    const events = new EventBus();
+    const events = new EventBroker();
     const emitted = collectEvents(events);
     let fleet = createFleet(repo, { name: 'A' });
     fleet = startPreparation(repo, fleet.id, fleet.version);
@@ -516,7 +516,7 @@ describe('fleet:stateChanged event emission', () => {
 
   it('resolveDestroyed emits InBattle → Destroyed', () => {
     const repo = makeRepo();
-    const events = new EventBus();
+    const events = new EventBroker();
     const emitted = collectEvents(events);
     let fleet = createFleet(repo, { name: 'A' });
     fleet = startPreparation(repo, fleet.id, fleet.version);
@@ -530,9 +530,9 @@ describe('fleet:stateChanged event emission', () => {
     expect(emitted[0]).toMatchObject({ fleetId: fleet.id, from: 'InBattle', to: 'Destroyed' });
   });
 
-  it('does not emit when EventBus is not provided', () => {
+  it('does not emit when EventBroker is not provided', () => {
     const repo = makeRepo();
-    const events = new EventBus();
+    const events = new EventBroker();
     const emitted = collectEvents(events);
     const fleet = createFleet(repo, { name: 'A' });
 
@@ -544,7 +544,7 @@ describe('fleet:stateChanged event emission', () => {
 
   it('full lifecycle emits one event per transition', () => {
     const repo = makeRepo();
-    const events = new EventBus();
+    const events = new EventBroker();
     const emitted = collectEvents(events);
     let fleet = createFleet(repo, { name: 'A' });
 

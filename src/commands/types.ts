@@ -1,4 +1,4 @@
-import type { EventBus } from '../events';
+import type { EventBroker } from '../events';
 import type { Logger } from '../logger';
 import type { BattleRepository, Command, CommandRepository , FleetRepository , ResourcePoolRepository } from '../persistence';
 
@@ -11,7 +11,7 @@ export interface CommandHandlerServices {
   resourcePools: ResourcePoolRepository;
   battles: BattleRepository;
   logger: Logger;
-  events: EventBus;
+  events: EventBroker;
 }
 
 /**

@@ -1,6 +1,6 @@
 import { createPersistenceContext } from '../../src/persistence/context';
 import { seedResourcePools } from '../../src/domain/resources';
-import { EventBus } from '../../src/events';
+import { EventBroker } from '../../src/events';
 import { NoopLogger } from '../../src/logger';
 import { InMemoryCommandQueue } from '../../src/commands/CommandQueue';
 import type { ICommandHandler, CommandHandlerServices } from '../../src/commands/types';
@@ -9,7 +9,7 @@ import type { Command } from '../../src/persistence';
 function makeQueue() {
   const ctx = createPersistenceContext();
   seedResourcePools(ctx.resourcePools);
-  const events = new EventBus();
+  const events = new EventBroker();
   const services: CommandHandlerServices = {
     commands: ctx.commands,
     fleets: ctx.fleets,
@@ -90,7 +90,7 @@ describe('InMemoryCommandQueue', () => {
     queue.registerHandler(makeHandler('TestCommand'));
 
     const succeededTypes: string[] = [];
-    events.on('command:succeeded', (event) => {
+    events.subscribe('command:succeeded', (event) => {
       succeededTypes.push(event.command.type);
     });
 
@@ -111,10 +111,10 @@ describe('InMemoryCommandQueue', () => {
 
     const succeededTypes: string[] = [];
     const failedTypes: string[] = [];
-    events.on('command:succeeded', (event) => {
+    events.subscribe('command:succeeded', (event) => {
       succeededTypes.push(event.command.type);
     });
-    events.on('command:failed', (event) => {
+    events.subscribe('command:failed', (event) => {
       failedTypes.push(event.command.type);
     });
 
@@ -130,7 +130,7 @@ describe('InMemoryCommandQueue', () => {
     queue.registerHandler(makeHandler('FirstCommand'));
     queue.registerHandler(makeHandler('FollowUpCommand'));
 
-    events.on('command:succeeded', (event) => {
+    events.subscribe('command:succeeded', (event) => {
       if (event.command.type === 'FirstCommand') {
         queue.enqueue({ type: 'FollowUpCommand', payload: {} });
       }

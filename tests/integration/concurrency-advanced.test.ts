@@ -1,7 +1,7 @@
 import { createPersistenceContext } from '../../src/persistence/context';
 import { ConcurrencyError } from '../../src/persistence';
 import { seedResourcePools } from '../../src/domain/resources';
-import { EventBus } from '../../src/events';
+import { EventBroker } from '../../src/events';
 import { NoopLogger } from '../../src/logger';
 import { InMemoryCommandQueue } from '../../src/commands/CommandQueue';
 import { BattleMatchmaker } from '../../src/domain/battle';
@@ -19,7 +19,7 @@ function makeServices() {
     resourcePools: ctx.resourcePools,
     battles: ctx.battles,
     logger: new NoopLogger(),
-    events: new EventBus(),
+    events: new EventBroker(),
   };
   return { ctx, services };
 }

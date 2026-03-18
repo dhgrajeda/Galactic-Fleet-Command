@@ -1,12 +1,12 @@
 import express from 'express';
 
-import { createCachingFleetRepository } from './cache/CachingFleetRepository';
 import { createCommandQueue } from './commands/createCommandQueue';
 import type { CommandHandlerServices } from './commands/types';
 import { seedResourcePools } from './domain/resources';
-import { EventBus } from './events';
+import { EventBroker } from './events';
+import { battleEvents } from './events/battleEvents';
 import type { Logger } from './logger';
-import { ConsoleLogger, NoopLogger } from './logger';
+import { ConsoleLogger } from './logger';
 import { createPersistenceContext } from './persistence/context';
 import { createBattleRoutes } from './routes/battleRoutes';
 import { createCommandRoutes } from './routes/commandRoutes';
@@ -20,33 +20,33 @@ export function createApp(options?: { logger?: Logger }) {
   // Persistence
   const ctx = createPersistenceContext();
   seedResourcePools(ctx.resourcePools);
-  const cachedFleets = createCachingFleetRepository(ctx.fleets);
-  const defaultLogger = process.env.NODE_ENV === 'test' ? new NoopLogger() : new ConsoleLogger({ component: 'app' });
-  const logger = options?.logger ?? defaultLogger;
+
+  // Observability
+  const logger = options?.logger ?? new ConsoleLogger({ component: 'app' });
 
   // Services
-  const events = new EventBus();
+  const events = new EventBroker();
   const services: CommandHandlerServices = {
     commands: ctx.commands,
-    fleets: cachedFleets,
+    fleets: ctx.fleets,
     resourcePools: ctx.resourcePools,
     battles: ctx.battles,
     logger,
     events,
   };
 
-  // Command Queue
+  // Command Queue + event wiring
   const commandQueue = createCommandQueue(services);
+  battleEvents(services, commandQueue);
 
   // Routes
+  app.use('/fleets', createFleetRoutes(ctx.fleets));
+  app.use('/commands', createCommandRoutes(commandQueue));
+  app.use('/resources', createResourceRoutes(ctx.resourcePools));
+  app.use('/battles', createBattleRoutes(ctx.battles, ctx.fleets));
   app.get('/health', (_req, res) => {
     res.status(200).json({ status: 'ok' });
   });
-
-  app.use('/fleets', createFleetRoutes(cachedFleets));
-  app.use('/commands', createCommandRoutes(commandQueue));
-  app.use('/resources', createResourceRoutes(ctx.resourcePools));
-  app.use('/battles', createBattleRoutes(ctx.battles, cachedFleets));
 
   return app;
 }

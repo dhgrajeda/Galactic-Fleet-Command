@@ -1,7 +1,8 @@
 import request from 'supertest';
 import { createApp } from '../../src/app';
+import { NoopLogger } from '../../src/logger';
 
-const app = createApp();
+const app = createApp({ logger: new NoopLogger() });
 
 describe('Fleet Routes', () => {
   describe('POST /fleets', () => {
@@ -95,7 +96,7 @@ describe('Fleet Routes', () => {
 
   describe('GET /fleets', () => {
     it('returns an array', async () => {
-      const freshApp = createApp();
+      const freshApp = createApp({ logger: new NoopLogger() });
       const res = await request(freshApp).get('/fleets');
       expect(res.status).toBe(200);
       expect(Array.isArray(res.body)).toBe(true);
