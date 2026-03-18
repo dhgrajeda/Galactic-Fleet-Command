@@ -205,7 +205,7 @@ npx ts-node scripts/demo-battle.ts
 
 [Click here](./COMMANDS.md) for more details on running commands.
 
-# Project structure
+## Project structure
 
 ```
 src/
