@@ -1,208 +1,251 @@
-# Galactic Fleet Command
+# Table of Contents
 
-## Context
+- [Running Locally](#running-locally)
+- [Architecture](#architecture)
+  - [Domain Model](#domain-model)
+- [Concurrency Strategy](#concurrency-strategy)
+- [Idempotency Strategy](#indempotency-strategy)
+- [Command Queue](#command-queue)
+- [Battle Resolution](#battle-resolution)
+- [Production Improvements](#production-improvements)
+  - [ETags for API Concurrency](#etags-for-api-concurrency)
+  - [Persistence](#persistence)
+  - [Command Queue](#command-queue-1)
+  - [Concurrency in a Distributed System](#concurrency-in-a-distributed-system)
+- [Project Structure](#project-structure)
 
-You are building the backend for **Galactic Fleet Command**, a strategy platform where factions assemble fleets, reserve scarce resources, and deploy fleets on missions across the galaxy.
+---
 
-This take-home is intentionally large. You may use AI coding assistants freely (Copilot, ChatGPT, Cursor, etc.). We are evaluating your system design and engineering judgment as much as the final code.
+# Running Locally
 
-## Tech Constraints
+### Install and start
 
-Build a backend service using:
-
-- **Tech stack of choice**
-  - **Node.js + TypeScript** plumbing provided in repo - if choosing different tech stack just rebuild existing infrastructure or start from scratch
-- **In-memory persistence** (no external databases required)
-- **REST APIs**
-- **Automated tests**
-
-You may use any libraries you like, **except**:
-
-- **Do not use** an off-the-shelf LRU implementation (you must implement it)
-- **Do not use** a real message queue (simulate in-memory)
-
-## What You're Building
-
-You will build a service with these major parts:
-
-- **Fleet domain + state machine**
-- **Resource reservation** with concurrency safety
-- **Command processing system** (queue + workers)
-- **LRU cache** used by your read path
-- **Event emission** for state changes (in-memory is fine)
-
-The service should feel like a foundation you'd be comfortable running in production with real infrastructure swapped in later.
-
-## Domain Model
-
-### Fleet Lifecycle
-
-A **Fleet** moves through states:
-
-```
-Docked → Preparing → Ready → Deployed → InBattle → (Victorious | Destroyed)
-                ↘ FailedPreparation
+```bash
+npm install
+npm run dev        # hot-reload dev server on port 3000
+# or
+npm run build && node dist/index.js
 ```
 
-### Rules / Invariants
+### Run tests
 
-- Only **Docked** fleets can be edited (add/remove ships, change loadout).
-- A fleet cannot become **Ready** unless required resources are successfully reserved.
-- A fleet cannot become **Deployed** unless it is **Ready**.
-- Once a fleet is **Victorious** or **Destroyed**, it is immutable.
-- State transitions must be validated and produce clear errors when invalid.
+```bash
+npm test
+npm test -- --coverage   # with coverage report
+```
 
-### Resources
+### Sample run
+```bash
+npx ts-node scripts/demo-battle.ts
+```
 
-The galaxy has limited shared resources:
+[Click here](./COMMANDS.md) for more details on running commands.
 
-- **FUEL**
-- **HYPERDRIVE_CORE**
-- **BATTLE_DROIDS**
 
-Example: only 100 **HYPERDRIVE_CORE** exist globally.
+# Architecture
+Galactic Fleet Command is an event-driven strategy platform. Factions assemble fleets, prepare them by reserving scarce galaxy-wide resources, deploy them on missions, and battle other fleets. The system is designed so that real infrastructure (database, message bus) can be swapped in without changing domain logic.
 
-Multiple fleets may attempt to reserve resources concurrently. Your system must **prevent over-allocation**.
+**Key system properties:**
+- Concurrency-safe resource reservation
+- Commands — CommandQueue processes async commands (PrepareFleet,  etc) with optimistic claim, retry with backoff, and idempotency fences in each handler
+- Events — Typed EventBroker (Node.js EventEmitter) decouples command handlers from follow-up logic. Fleet transitions emit fleet:stateChanged; the queue emits command:succeeded/failed. Listeners wire the automation: deploy → matchmaker → start battle → resolve battle
+- Persistence — Generic InMemoryRepository<T> with optimistic locking
 
-## Required APIs (REST)
+### High level
+![architecture](./images/arch.svg)
 
-At minimum, implement:
+### Events
+![events](./images/arch-events.svg)
 
-### Fleets
 
-- **POST /fleets** — create a fleet
-- **PATCH /fleets/:id** — modify a fleet (Docked only)
-- **GET /fleets/:id** — fetch a fleet (read model is fine)
-- **GET /fleets/:id/timeline** — show fleet history (events or transitions)
 
-### Commands
+## Domain model
 
-Command processing is central to this assignment. Implement:
 
-- **POST /commands** — enqueue a command
-- **GET /commands/:id** — get command status/result
+### Fleet
+```
+Fleet
+├── id: string                              (identity)
+├── version: number                         (optimistic lock)
+├── name: string
+├── state: FleetState                       (FSM state)
+├── ships: Ship[]                          
+├── requiredResources: ResourceRequirement  
+├── reservedResources: ResourceRequirement  (set on Ready)
+├── timeline: FleetEvent[]                  (append-only event log)
+```
 
-### Health/observability
+### Resource pool
+```
+ResourcePool
+├── id: string
+├── version: number
+├── resourceType: ResourceType   (FUEL | HYPERDRIVE_CORE | BATTLE_DROIDS)
+├── total: number                (fixed capacity)
+└── reserved: number             (sum of all active reservations)
+```
 
-- **GET /health**
+### Command
+```
+Command
+├── id: string
+├── version: number
+├── type: CommandType            (PrepareFleet | DeployFleet)
+├── status: CommandStatus        (Queued | Processing | Succeeded | Failed)
+├── payload: Record              (command-specific parameters)
+├── idempotencyKey: string       (client-provided deduplication key)
+├── attemptCount: number
+├── createdAt: string
+├── processedAt?: string
+└── error?: string
+```
 
-## Command Processing System (Core Requirement)
+# Concurrency strategy
+**Problem:** Multiple requests may attempt to reserve the same resource pool simultaneously. Without coordination, two commands reading `available = 10` could each reserve 8, producing a total reservation of 16.
+ 
+ > **Note: Node.js is single-threaded.** The only moment two async operations can interleave is when one of them hits an `await` and yields control back to the event loop.
 
-Your service must include an **in-memory Command Queue** and **Command Workers**.
+**Approach: Optimistic Locking**
 
-**Why commands?**  
-Fleet operations like reserving resources and deploying fleets represent "workflow steps" and are a good way to test distributed-system thinking without needing real infrastructure.
+Resource reservation uses **optimistic locking** (version field on every entity):
 
-### Required command types
+1. Read the resource pool and its current version.
+2. Compute the new reserved amount.
+3. Call `repo.update(id, expectedVersion, updater)` — throws `ConcurrencyError` if another writer incremented the version first.
+4. On `ConcurrencyError`, retry up to 5 times with a fresh read.
 
-Implement at least these commands:
+ **Why I chose optimistic locking:** Making the assumption that conflicts in our system are rare (few concurrent commands targeting the same fleet),
+  retries are cheap (in-memory reads), and it maps directly to production databases (Cosmos _etag, PostgreSQL
+  rowVersion) with zero domain code changes. The main trade-off is no cross-entity atomicity, we handle with fleet-first ordering and idempotency fences rather than transactions
 
-**PrepareFleetCommand**
+**Alternatives:**
+- Transactional boundary: Was not considered as this project uses an in-memory data store and Node.js has no transactional support. In short - too complicated for this project.
+- Saga: This could have been an option, specially since transactions were not an option, but the complexity of the compensating logic seemed hard to get right for the timeline, like handling failures of the compensation step.
 
-- transitions **Docked → Preparing**
-- reserves required resources
-- if successful → transitions to **Ready**
-- if fails → transitions to **FailedPreparation**
+# Indempotency Strategy
+**Problem:** A command worker may crash after partially executing a command but before marking it Succeeded. On restart, the command is re-queued and executed again. This must not double-reserve resources or double-transition fleet state.
 
-**DeployFleetCommand**
+**Solution: Indempotency Key.**
+We use commandId as an indempotency key. ResourceReservationService tracks which (commandId, resourceType) pairs have been successfully reserved. On retry, already-reserved pairs are skipped.
 
-- transitions **Ready → Deployed**
 
-(You may add more commands if you want, but these two are required.)
+1. **Command lifecycle guard** — Before executing a command, check its `status`. If it is already `Succeeded`, return the result immediately without re-executing. This is the primary idempotency gate.
 
-### Command processing requirements
+2. **State-based guards in handlers** — Each command handler checks the current fleet state before applying transitions. `PrepareFleetCommandHandler` checks that the fleet is still `Docked` before transitioning to `Preparing`; if it is already `Preparing` or `Ready`, it infers prior partial execution and continues from where it left off. **Confirmed behaviour:** submitting a `PrepareFleet` command for a fleet already in `Preparing` or `Ready` is treated as idempotent — the command succeeds without re-applying side effects.
 
-- Commands are created via **POST /commands**
-- Commands are processed **asynchronously** by one or more in-memory workers
-- Each command has a lifecycle/status: **Queued | Processing | Succeeded | Failed**
-- Each command attempt must be recorded with:
-  - attempt count
-  - timestamps
-  - error (if any)
+3. **Resource reservation fence** — `ResourceReservationService` tracks which `(commandId, resourceType)` pairs have been successfully reserved. On retry, already-reserved pairs are skipped.
 
-### Idempotency
+Re-submitting the same logical command is always safe.
 
-Commands must be **idempotent**. If the same command is processed twice (e.g., due to retry), it must not double-apply side effects (double reserve, double transition, etc.).
+# Command queue
+**Problem:**
+Fleet operations like resource reservation and deployment are "workflow steps" — they may fail, need
+  retries, and shouldn't block the HTTP response. POST /commands returns 202 Accepted immediately; the queue processes
+  it asynchronously.
 
-Include an **idempotency strategy** (your choice), and document it in README.
 
-## Concurrency & Data Integrity (Must-Have)
+- `DeployFleet` success → add fleet to matchmaker pool → if pair found, enqueue `StartBattle`
+- `StartBattle` success → enqueue `ResolveBattle`
 
-Resource reservation must be **concurrency safe**. We will look for a deliberate strategy such as:
+# Battle Resolution
 
-- optimistic locking (versions)
-- pessimistic locking (mutex per resource)
-- atomic compare-and-set simulation
-- transactional boundary abstraction
+Score formula: `(sum(reservedResources) + 50) * random[0.5, 1.5)`. The base of 50 ensures even resource-poor fleets have a chance. The fleet with higher resources wins *most* battles but not all.
 
-**Important:** We will run a test where two commands attempt to reserve overlapping resources concurrently, and we expect **no over-allocation**.
+# Production Improvements
 
-## LRU Cache (Algorithmic Requirement)
+## ETags for API Concurrency
 
-Implement an **O(1) LRU cache from scratch** (no libraries).
+Currently, optimistic concurrency is handled via a `version` field in the request body. In production, this should use HTTP ETags:
 
-Use it to cache at least one read path, e.g.:
+- `GET /fleets/:id` returns `ETag: "v3"` header
+- `PATCH /fleets/:id` requires `If-Match: "v3"` header
+- Returns `412 Precondition Failed` on version mismatch
 
-- **GET /fleets/:id** read model
-- resource availability reads
+This follows HTTP semantics and works naturally with caches and CDNs.
 
-Include unit tests proving:
+## Persistence
 
-- eviction order
-- O(1) behavior assumption (structural)
-- updates move entries to most-recently-used
+Swap `InMemoryRepository` for a database-backed implementation behind the same `Repository<T>` interface. The optimistic locking pattern (`version` field, `ConcurrencyError` on mismatch) maps directly to:
 
-## Events / Timeline
+- **PostgreSQL**: Use a `version` column; `UPDATE ... WHERE id = $1 AND version = $2` returns 0 rows on conflict → throw `ConcurrencyError`
+- **Azure Cosmos DB**: Use the built-in `_etag` field; pass `If-Match` header on writes → 412 on conflict
 
-Every fleet state transition must **emit an event** (in-memory is fine). **GET /fleets/:id/timeline** should return the ordered timeline of these events.
+No domain code changes required, only the repository implementations change.
 
-Examples:
+## Command Queue
+Replace with a durable message broker:
 
-- FleetCreated
-- FleetPrepared
-- ResourcesReserved
-- FleetDeployRequested
-- FleetDeployed
-- FleetPreparationFailed
+- **Azure Service Bus / RabbitMQ / SQS**: Commands become messages on a queue. Multiple worker instances compete to consume them. The broker handles delivery guarantees, dead-letter queues, and retry policies.
+- The `ICommandQueue` interface stays the same — `enqueue()` publishes a message, workers consume and dispatch to handlers.
+- **Dead-letter queue**: After N failed attempts, move the command to a DLQ for manual inspection instead of silently dropping it.
+- Post-processing hooks would publish follow-up messages to the same queue, preserving the event-driven dispatch pattern.
 
-We care less about the exact naming than correctness and clarity.
+The idempotency fence in each handler remains critical — brokers guarantee *at-least-once* delivery, so handlers must tolerate duplicates.
 
-## Tests
+## Concurrency in a Distributed System
 
-Include automated tests for:
+The current system runs as a single Node.js process, so "concurrency" means interleaved async operations within one event loop. In production with multiple instances, the concurrency challenges multiply:
 
-- fleet state machine (valid + invalid transitions)
-- resource reservation concurrency behavior
-- command retries
-- LRU cache
+**Optimistic locking scales naturally.** The version-check-on-write pattern works identically whether conflicts come from the same process or different instances. The database enforces the version check, not the application. This is why we chose optimistic locking throughout rather than in-process mutexes that don't translate to distributed systems.
 
-At least one **integration-style test** is expected.
+**Resource reservation** needs no changes. Multiple instances calling `reserve()` concurrently will each attempt `UPDATE resource_pool SET reserved = reserved + N WHERE version = V`. One succeeds, others get `ConcurrencyError` and retry with a fresh read. The bounded retry with exponential backoff (already implemented) prevents contention storms.
 
-## Deliverables
+**Affected by the following:** 
+- Optimistic Locking: Conflicts are rare, retries are cheap
+- Pessimistic Locking: Conflicts are frequent, operations are short
+- Atomic CAS: Single-field updates, high-throughput counters
+- Transactional Boundary: Multiple entities must succeed or fail together
 
-Provide:
+**Matchmaker** is the hardest to distribute. The in-memory version counter doesn't work across instances. Options (ranked by recommendation):
 
-- **Source code** (Git repo)
-- **README.md** explaining:
-  - architecture (high-level)
-  - domain model decisions
-  - concurrency strategy
-  - idempotency strategy
-  - what would change in production (Azure Service Bus, Cosmos/SQL, etc.)
+1. **Redis Lua script**: Atomically add-to-pool-and-match in a single Redis command. O(1), strongly consistent, zero contention.
+2. **Database row locking**: `SELECT FOR UPDATE` on a matchmaking pool table. Consistent but adds latency.
+3. **Optimistic DB matching**: Write fleet to pool table, then try to atomically claim a pair with a conditional update. Same pattern as the current implementation, backed by DB.
 
-- **Instructions to run locally**
+### Other Production Considerations
 
-## Time Expectations
+| Concern | Current | Production |
+|---|---|---|
+| Observability | `console.log` | Structured logging (pino), metrics (Prometheus), tracing (OpenTelemetry) |
+| Auth | None | JWT / API key middleware |
+| Resource pools | Hardcoded totals | Admin API to configure pool sizes |
+| Rate limiting | None | Express rate limiter middleware |
 
-This assignment is intentionally large as we are looking for candidates to build this project using AI coding assistants. Scope thoughtfully. Prioritize **correctness**, **clarity**, and **architectural integrity**.
+## Project structure
 
-## Evaluation Criteria (What We'll Look For)
-
-- Clean architecture and separation of concerns
-- Domain modeling and state machine correctness
-- Concurrency safety and data integrity
-- Idempotent command processing with retries
-- Test quality and coverage of tricky behaviors
-- Production-minded observability and error handling
-- Extend README describing tradeoffs and next steps
-
+```
+src/
+  index.ts                    # Entry point
+  app.ts                      # Express app factory; wires all components
+  persistence/
+    types.ts                  # VersionedEntity, error types
+    InMemoryRepository.ts     # Generic repository with optimistic locking
+    fleetRepository.ts        # Fleet entity (ships, resources, timeline)
+    commandRepository.ts      # Command entity
+    resourcePoolRepository.ts # ResourcePool with getByType()
+    battleRepository.ts       # Battle entity
+    context.ts                
+  domain/
+    fleet/
+      stateMachine.ts         # Valid transitions, InvalidTransitionError
+      FleetService.ts         # Fleet mutations (createFleet, startPreparation, etc)
+    resources/
+      ResourceService.ts      # Concurrency-safe reservation with retry
+    battle/
+      BattleMatchmaker.ts     # Matchmaking pool with optimistic locking
+      BattleResolver.ts       # Score-based battle resolution with randomness
+  commands/
+    types.ts                  
+    CommandQueue.ts           # Enqueue, optimistic claim, retry, post-processing hooks
+    createCommandQueue.ts     # Factory — registers handlers, wires matchmaker hooks
+    handlers/
+      PrepareFleetHandler.ts  # Fleet-first ordering + idempotency fence
+      DeployFleetHandler.ts   # Idempotency fence
+      StartBattleHandler.ts   # Transitions both fleets, creates battle record
+      ResolveBattleHandler.ts # Resolves battle, transitions to terminal states
+  routes/
+    battleRoutes.ts           # GET /battles, GET /battles/:id
+    commandRoutes.ts
+    fleetRoutes.ts
+    resourceRoutes.ts
+```
