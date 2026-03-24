@@ -1,11 +1,11 @@
 import { deployFleet } from '../../domain/fleet';
 import type { Command } from '../../persistence';
-import type { ICommandHandler, CommandHandlerServices, CommandResult } from '../types';
+import type { ICommandWorker, CommandWorkerServices, CommandResult } from '../types';
 
-export const DeployFleetHandler: ICommandHandler = {
+export const DeployFleetWorker: ICommandWorker = {
   type: 'DeployFleet',
 
-  handle(command: Command, services: CommandHandlerServices): CommandResult {
+  execute(command: Command, services: CommandWorkerServices): CommandResult {
     const { fleetId } = command.payload as { fleetId: string };
 
     const fleet = services.fleets.getOrThrow(fleetId);

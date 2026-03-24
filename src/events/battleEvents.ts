@@ -1,5 +1,5 @@
-import { deriveBattleId } from '../commands/handlers/StartBattleHandler';
-import type { CommandHandlerServices, ICommandQueue } from '../commands/types';
+import { deriveBattleId } from '../commands/workers/StartBattleWorker';
+import type { CommandWorkerServices, ICommandQueue } from '../commands/types';
 import { BattleMatchmaker } from '../domain/battle/BattleMatchmaker';
 import type { CommandSucceededEvent, FleetStateChangedEvent } from '../events';
 
@@ -9,7 +9,7 @@ import type { CommandSucceededEvent, FleetStateChangedEvent } from '../events';
  * - Matched pairs trigger StartBattle commands
  * - Completed battles trigger ResolveBattle commands
  */
-export function battleEvents(services: CommandHandlerServices, queue: ICommandQueue): void {
+export function battleEvents(services: CommandWorkerServices, queue: ICommandQueue): void {
   const matchmaker = new BattleMatchmaker(services.logger.child({ component: 'matchmaker' }));
 
   // When a fleet is deployed, add it to the matchmaker pool

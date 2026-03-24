@@ -3,14 +3,14 @@ import { createFleet, startPreparation, completePreparation, deployFleet, enterB
 import { seedResourcePools } from '../../../src/domain/resources';
 import { EventBroker } from '../../../src/events';
 import { NoopLogger } from '../../../src/logger';
-import { ResolveBattleHandler } from '../../../src/commands/handlers/ResolveBattleHandler';
-import type { CommandHandlerServices } from '../../../src/commands/types';
+import { ResolveBattleWorker } from '../../../src/commands/workers/ResolveBattleWorker';
+import type { CommandWorkerServices } from '../../../src/commands/types';
 import type { Command } from '../../../src/persistence';
 
 function setup() {
   const ctx = createPersistenceContext();
   seedResourcePools(ctx.resourcePools);
-  const services: CommandHandlerServices = {
+  const services: CommandWorkerServices = {
     commands: ctx.commands,
     fleets: ctx.fleets,
     resourcePools: ctx.resourcePools,
@@ -30,7 +30,7 @@ function createBattlingFleet(ctx: ReturnType<typeof createPersistenceContext>, n
   return fleet;
 }
 
-describe('ResolveBattleHandler', () => {
+describe('ResolveBattleWorker', () => {
   it('resolves battle and transitions fleets to Victorious/Destroyed', () => {
     const { ctx, services } = setup();
     const a = createBattlingFleet(ctx, 'Alpha', 500);
@@ -52,7 +52,7 @@ describe('ResolveBattleHandler', () => {
       payload: { battleId: 'battle-1' },
     };
 
-    const result = ResolveBattleHandler.handle(cmd, services);
+    const result = ResolveBattleWorker.execute(cmd, services);
     expect(result.success).toBe(true);
 
     const fleetA = ctx.fleets.getOrThrow(a.id);
@@ -90,8 +90,8 @@ describe('ResolveBattleHandler', () => {
       payload: { battleId: 'battle-2' },
     };
 
-    ResolveBattleHandler.handle(cmd, services);
-    const result = ResolveBattleHandler.handle(cmd, services);
+    ResolveBattleWorker.execute(cmd, services);
+    const result = ResolveBattleWorker.execute(cmd, services);
     expect(result.success).toBe(true);
   });
 });

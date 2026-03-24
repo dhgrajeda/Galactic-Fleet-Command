@@ -1,12 +1,12 @@
 import { startPreparation, completePreparation, failPreparation } from '../../domain/fleet';
 import { reserve, InsufficientResourceError } from '../../domain/resources';
 import type { Command } from '../../persistence';
-import type { ICommandHandler, CommandHandlerServices, CommandResult } from '../types';
+import type { ICommandWorker, CommandWorkerServices, CommandResult } from '../types';
 
-export const PrepareFleetHandler: ICommandHandler = {
+export const PrepareFleetWorker: ICommandWorker = {
   type: 'PrepareFleet',
 
-  handle(command: Command, services: CommandHandlerServices): CommandResult {
+  execute(command: Command, services: CommandWorkerServices): CommandResult {
     const { fleetId, requiredResources } = command.payload as {
       fleetId: string;
       requiredResources?: Record<string, number>;

@@ -1,7 +1,7 @@
 import express from 'express';
 
 import { createCommandQueue } from './commands/createCommandQueue';
-import type { CommandHandlerServices } from './commands/types';
+import type { CommandWorkerServices } from './commands/types';
 import { seedResourcePools } from './domain/resources';
 import { EventBroker } from './events';
 import { battleEvents } from './events/battleEvents';
@@ -26,7 +26,7 @@ export function createApp(options?: { logger?: Logger }) {
 
   // Services
   const events = new EventBroker();
-  const services: CommandHandlerServices = {
+  const services: CommandWorkerServices = {
     commands: ctx.commands,
     fleets: ctx.fleets,
     resourcePools: ctx.resourcePools,

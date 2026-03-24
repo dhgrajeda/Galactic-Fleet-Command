@@ -1,15 +1,15 @@
 import { enterBattle } from '../../domain/fleet';
 import type { Command } from '../../persistence';
-import type { ICommandHandler, CommandHandlerServices, CommandResult } from '../types';
+import type { ICommandWorker, CommandWorkerServices, CommandResult } from '../types';
 
 export function deriveBattleId(commandId: string): string {
   return `battle-${commandId}`;
 }
 
-export const StartBattleHandler: ICommandHandler = {
+export const StartBattleWorker: ICommandWorker = {
   type: 'StartBattle',
 
-  handle(command: Command, services: CommandHandlerServices): CommandResult {
+  execute(command: Command, services: CommandWorkerServices): CommandResult {
     const { fleetAId, fleetBId } = command.payload as {
       fleetAId: string;
       fleetBId: string;

@@ -1,12 +1,12 @@
 import { resolveBattle } from '../../domain/battle';
 import { resolveVictorious, resolveDestroyed } from '../../domain/fleet';
 import type { Command } from '../../persistence';
-import type { ICommandHandler, CommandHandlerServices, CommandResult } from '../types';
+import type { ICommandWorker, CommandWorkerServices, CommandResult } from '../types';
 
-export const ResolveBattleHandler: ICommandHandler = {
+export const ResolveBattleWorker: ICommandWorker = {
   type: 'ResolveBattle',
 
-  handle(command: Command, services: CommandHandlerServices): CommandResult {
+  execute(command: Command, services: CommandWorkerServices): CommandResult {
     const { battleId } = command.payload as { battleId: string };
 
     const battle = services.battles.getOrThrow(battleId);

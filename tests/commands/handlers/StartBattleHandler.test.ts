@@ -3,14 +3,14 @@ import { createFleet, startPreparation, completePreparation, deployFleet } from 
 import { seedResourcePools } from '../../../src/domain/resources';
 import { EventBroker } from '../../../src/events';
 import { NoopLogger } from '../../../src/logger';
-import { StartBattleHandler } from '../../../src/commands/handlers/StartBattleHandler';
-import type { CommandHandlerServices } from '../../../src/commands/types';
+import { StartBattleWorker } from '../../../src/commands/workers/StartBattleWorker';
+import type { CommandWorkerServices } from '../../../src/commands/types';
 import type { Command } from '../../../src/persistence';
 
 function setup() {
   const ctx = createPersistenceContext();
   seedResourcePools(ctx.resourcePools);
-  const services: CommandHandlerServices = {
+  const services: CommandWorkerServices = {
     commands: ctx.commands,
     fleets: ctx.fleets,
     resourcePools: ctx.resourcePools,
@@ -39,13 +39,13 @@ function makeCommand(fleetAId: string, fleetBId: string): Command {
   };
 }
 
-describe('StartBattleHandler', () => {
+describe('StartBattleWorker', () => {
   it('transitions both fleets to InBattle', () => {
     const { ctx, services } = setup();
     const a = createDeployedFleet(ctx, 'Alpha');
     const b = createDeployedFleet(ctx, 'Beta');
 
-    const result = StartBattleHandler.handle(makeCommand(a.id, b.id), services);
+    const result = StartBattleWorker.execute(makeCommand(a.id, b.id), services);
 
     expect(result.success).toBe(true);
     expect(ctx.fleets.getOrThrow(a.id).state).toBe('InBattle');
@@ -57,7 +57,7 @@ describe('StartBattleHandler', () => {
     const a = createDeployedFleet(ctx, 'Alpha');
     const b = createDeployedFleet(ctx, 'Beta');
 
-    StartBattleHandler.handle(makeCommand(a.id, b.id), services);
+    StartBattleWorker.execute(makeCommand(a.id, b.id), services);
 
     const battle = ctx.battles.get('battle-cmd-battle-1');
     expect(battle).toBeDefined();
@@ -72,8 +72,8 @@ describe('StartBattleHandler', () => {
     const b = createDeployedFleet(ctx, 'Beta');
 
     const cmd = makeCommand(a.id, b.id);
-    StartBattleHandler.handle(cmd, services);
-    const result = StartBattleHandler.handle(cmd, services);
+    StartBattleWorker.execute(cmd, services);
+    const result = StartBattleWorker.execute(cmd, services);
 
     expect(result.success).toBe(true);
   });

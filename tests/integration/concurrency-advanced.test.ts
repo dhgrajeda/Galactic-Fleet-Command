@@ -6,14 +6,14 @@ import { NoopLogger } from '../../src/logger';
 import { InMemoryCommandQueue } from '../../src/commands/CommandQueue';
 import { BattleMatchmaker } from '../../src/domain/battle';
 import { createFleet, startPreparation, completePreparation, deployFleet } from '../../src/domain/fleet';
-import { PrepareFleetHandler } from '../../src/commands/handlers/PrepareFleetHandler';
-import type { CommandHandlerServices, ICommandHandler } from '../../src/commands/types';
+import { PrepareFleetWorker } from '../../src/commands/workers/PrepareFleetWorker';
+import type { CommandWorkerServices, ICommandWorker } from '../../src/commands/types';
 import type { Command } from '../../src/persistence';
 
 function makeServices() {
   const ctx = createPersistenceContext();
   seedResourcePools(ctx.resourcePools);
-  const services: CommandHandlerServices = {
+  const services: CommandWorkerServices = {
     commands: ctx.commands,
     fleets: ctx.fleets,
     resourcePools: ctx.resourcePools,
@@ -27,14 +27,14 @@ function makeServices() {
 // ─── 1. Command queue retry on ConcurrencyError ────────────────────────────
 
 describe('Command queue retry on ConcurrencyError', () => {
-  it('retries handler when it throws ConcurrencyError, then succeeds', async () => {
+  it('retries worker when it throws ConcurrencyError, then succeeds', async () => {
     const { services } = makeServices();
     const queue = new InMemoryCommandQueue(services);
 
     let attempts = 0;
-    const handler: ICommandHandler = {
+    const worker: ICommandWorker = {
       type: 'RetryTest',
-      handle() {
+      execute() {
         attempts++;
         if (attempts < 3) {
           throw new ConcurrencyError('test-entity', 1, 2);
@@ -43,7 +43,7 @@ describe('Command queue retry on ConcurrencyError', () => {
       },
     };
 
-    queue.registerHandler(handler);
+    queue.registerWorker(worker);
     const cmd = queue.enqueue({ type: 'RetryTest', payload: {} });
     await queue.flush();
 
@@ -55,14 +55,14 @@ describe('Command queue retry on ConcurrencyError', () => {
     const { services } = makeServices();
     const queue = new InMemoryCommandQueue(services);
 
-    const handler: ICommandHandler = {
+    const worker: ICommandWorker = {
       type: 'AlwaysConflict',
-      handle() {
+      execute() {
         throw new ConcurrencyError('test-entity', 1, 2);
       },
     };
 
-    queue.registerHandler(handler);
+    queue.registerWorker(worker);
     const cmd = queue.enqueue({ type: 'AlwaysConflict', payload: {} });
     await queue.flush();
 
@@ -77,11 +77,11 @@ describe('Command queue optimistic claim', () => {
     const { ctx, services } = makeServices();
     const queue = new InMemoryCommandQueue(services);
 
-    let handleCount = 0;
-    queue.registerHandler({
+    let executeCount = 0;
+    queue.registerWorker({
       type: 'ClaimTest',
-      handle() {
-        handleCount++;
+      execute() {
+        executeCount++;
         return { success: true };
       },
     });
@@ -98,18 +98,18 @@ describe('Command queue optimistic claim', () => {
     // flush should see it's no longer Queued and skip it
     await queue.flush();
 
-    expect(handleCount).toBe(0);
+    expect(executeCount).toBe(0);
   });
 
   it('skips command when another worker already moved it past Queued', async () => {
     const { ctx, services } = makeServices();
     const queue = new InMemoryCommandQueue(services);
 
-    let handleCount = 0;
-    queue.registerHandler({
+    let executeCount = 0;
+    queue.registerWorker({
       type: 'AlreadyDone',
-      handle() {
-        handleCount++;
+      execute() {
+        executeCount++;
         return { success: true };
       },
     });
@@ -125,8 +125,8 @@ describe('Command queue optimistic claim', () => {
 
     await queue.flush();
 
-    // Handler should never have been called — command was already done
-    expect(handleCount).toBe(0);
+    // Worker should never have been called — command was already done
+    expect(executeCount).toBe(0);
   });
 });
 
@@ -148,7 +148,7 @@ describe('Cross-entity partial failure in PrepareFleet', () => {
       payload: { fleetId: fleet.id, requiredResources: { FUEL: 99999 } },
     };
 
-    const result = PrepareFleetHandler.handle(cmd, services);
+    const result = PrepareFleetWorker.execute(cmd, services);
 
     expect(result.success).toBe(true);
     const updated = ctx.fleets.getOrThrow(fleet.id);
@@ -176,7 +176,7 @@ describe('Cross-entity partial failure in PrepareFleet', () => {
       },
     };
 
-    PrepareFleetHandler.handle(cmd, services);
+    PrepareFleetWorker.execute(cmd, services);
 
     const updated = ctx.fleets.getOrThrow(fleet.id);
     expect(updated.state).toBe('FailedPreparation');
@@ -221,12 +221,12 @@ describe('Idempotency fence under retry', () => {
     };
 
     // First command succeeds
-    PrepareFleetHandler.handle(cmd1, services);
+    PrepareFleetWorker.execute(cmd1, services);
     const afterFirst = ctx.fleets.getOrThrow(fleet.id);
     expect(afterFirst.state).toBe('Ready');
 
     // Second command hits idempotency fence — fleet is already Ready
-    const result = PrepareFleetHandler.handle(cmd2, services);
+    const result = PrepareFleetWorker.execute(cmd2, services);
     expect(result.success).toBe(true);
 
     // Resources reserved only once
@@ -238,10 +238,10 @@ describe('Idempotency fence under retry', () => {
     const { ctx, services } = makeServices();
     const fleet = createFleet(ctx.fleets, { name: 'Beta' });
 
-    // Simulate first attempt: fleet moves to Preparing but handler "crashes"
+    // Simulate first attempt: fleet moves to Preparing but worker "crashes"
     startPreparation(ctx.fleets, fleet.id, fleet.version);
 
-    // Retry: handler sees fleet is Preparing, returns idempotent success
+    // Retry: worker sees fleet is Preparing, returns idempotent success
     const cmd: Command = {
       id: 'cmd-retry',
       version: 1,
@@ -250,7 +250,7 @@ describe('Idempotency fence under retry', () => {
       payload: { fleetId: fleet.id, requiredResources: { FUEL: 50 } },
     };
 
-    const result = PrepareFleetHandler.handle(cmd, services);
+    const result = PrepareFleetWorker.execute(cmd, services);
     expect(result.success).toBe(true);
 
     // Fleet stays in Preparing (fence returns early, no resource reservation)

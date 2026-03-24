@@ -1,20 +1,20 @@
 import { InMemoryCommandQueue } from './CommandQueue';
-import { DeployFleetHandler } from './handlers/DeployFleetHandler';
-import { PrepareFleetHandler } from './handlers/PrepareFleetHandler';
-import { ResolveBattleHandler } from './handlers/ResolveBattleHandler';
-import { StartBattleHandler } from './handlers/StartBattleHandler';
-import type { CommandHandlerServices, ICommandQueue } from './types';
+import { DeployFleetWorker } from './workers/DeployFleetWorker';
+import { PrepareFleetWorker } from './workers/PrepareFleetWorker';
+import { ResolveBattleWorker } from './workers/ResolveBattleWorker';
+import { StartBattleWorker } from './workers/StartBattleWorker';
+import type { CommandWorkerServices, ICommandQueue } from './types';
 
 /**
- * Creates a command queue with all handlers registered.
+ * Creates a command queue with all workers registered.
  */
-export function createCommandQueue(services: CommandHandlerServices): ICommandQueue {
+export function createCommandQueue(services: CommandWorkerServices): ICommandQueue {
   const queue = new InMemoryCommandQueue(services);
 
-  queue.registerHandler(PrepareFleetHandler);
-  queue.registerHandler(DeployFleetHandler);
-  queue.registerHandler(StartBattleHandler);
-  queue.registerHandler(ResolveBattleHandler);
+  queue.registerWorker(PrepareFleetWorker);
+  queue.registerWorker(DeployFleetWorker);
+  queue.registerWorker(StartBattleWorker);
+  queue.registerWorker(ResolveBattleWorker);
 
   return queue;
 }

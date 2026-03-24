@@ -4,9 +4,9 @@ import { ConcurrencyError } from '../persistence';
 import type { Command } from '../persistence';
 
 import type {
-  CommandHandlerServices,
+  CommandWorkerServices,
   CommandResult,
-  ICommandHandler,
+  ICommandWorker,
   ICommandQueue,
 } from './types';
 
@@ -21,16 +21,16 @@ function delay(ms: number): Promise<void> {
  * In-memory command queue with optimistic claim, retry, and EventBus integration.
  */
 export class InMemoryCommandQueue implements ICommandQueue {
-  private readonly handlers = new Map<string, ICommandHandler>();
-  private readonly services: CommandHandlerServices;
+  private readonly workers = new Map<string, ICommandWorker>();
+  private readonly services: CommandWorkerServices;
   private readonly pending: string[] = [];
 
-  constructor(services: CommandHandlerServices) {
+  constructor(services: CommandWorkerServices) {
     this.services = services;
   }
 
-  registerHandler(handler: ICommandHandler): void {
-    this.handlers.set(handler.type, handler);
+  registerWorker(worker: ICommandWorker): void {
+    this.workers.set(worker.type, worker);
   }
 
   enqueue(input: Omit<Command, 'id' | 'version' | 'status'>): Command {
@@ -83,10 +83,10 @@ export class InMemoryCommandQueue implements ICommandQueue {
 
     const log = this.services.logger.child({ commandId: id, commandType: command.type });
 
-    const handler = this.handlers.get(command.type);
-    if (!handler) {
-      log.error('No handler registered', { commandType: command.type });
-      this.markFailed(id, `No handler registered for command type: ${command.type}`);
+    const worker = this.workers.get(command.type);
+    if (!worker) {
+      log.error('No worker registered', { commandType: command.type });
+      this.markFailed(id, `No worker registered for command type: ${command.type}`);
       return;
     }
 
@@ -100,7 +100,7 @@ export class InMemoryCommandQueue implements ICommandQueue {
 
       try {
         const current = this.services.commands.getOrThrow(id);
-        result = handler.handle(current, this.services);
+        result = worker.execute(current, this.services);
         break;
       } catch (err) {
         if (err instanceof ConcurrencyError && attempt < RETRY_DELAYS.length - 1) {

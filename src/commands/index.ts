@@ -2,7 +2,7 @@ export { InMemoryCommandQueue } from './CommandQueue';
 export { createCommandQueue } from './createCommandQueue';
 export type {
   ICommandQueue,
-  ICommandHandler,
-  CommandHandlerServices,
+  ICommandWorker,
+  CommandWorkerServices,
   CommandResult,
 } from './types';

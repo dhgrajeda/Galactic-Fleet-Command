@@ -3,14 +3,14 @@ import { createFleet, startPreparation, completePreparation } from '../../../src
 import { seedResourcePools } from '../../../src/domain/resources';
 import { EventBroker } from '../../../src/events';
 import { NoopLogger } from '../../../src/logger';
-import { DeployFleetHandler } from '../../../src/commands/handlers/DeployFleetHandler';
-import type { CommandHandlerServices } from '../../../src/commands/types';
+import { DeployFleetWorker } from '../../../src/commands/workers/DeployFleetWorker';
+import type { CommandWorkerServices } from '../../../src/commands/types';
 import type { Command } from '../../../src/persistence';
 
 function setup() {
   const ctx = createPersistenceContext();
   seedResourcePools(ctx.resourcePools);
-  const services: CommandHandlerServices = {
+  const services: CommandWorkerServices = {
     commands: ctx.commands,
     fleets: ctx.fleets,
     resourcePools: ctx.resourcePools,
@@ -38,12 +38,12 @@ function createReadyFleet(ctx: ReturnType<typeof createPersistenceContext>, name
   return fleet;
 }
 
-describe('DeployFleetHandler', () => {
+describe('DeployFleetWorker', () => {
   it('transitions fleet from Ready to Deployed', () => {
     const { ctx, services } = setup();
     const fleet = createReadyFleet(ctx, 'Alpha');
 
-    const result = DeployFleetHandler.handle(makeCommand(fleet.id), services);
+    const result = DeployFleetWorker.execute(makeCommand(fleet.id), services);
 
     expect(result.success).toBe(true);
     expect(ctx.fleets.getOrThrow(fleet.id).state).toBe('Deployed');
@@ -53,8 +53,8 @@ describe('DeployFleetHandler', () => {
     const { ctx, services } = setup();
     const fleet = createReadyFleet(ctx, 'Alpha');
 
-    DeployFleetHandler.handle(makeCommand(fleet.id), services);
-    const result = DeployFleetHandler.handle(makeCommand(fleet.id), services);
+    DeployFleetWorker.execute(makeCommand(fleet.id), services);
+    const result = DeployFleetWorker.execute(makeCommand(fleet.id), services);
 
     expect(result.success).toBe(true);
     expect(ctx.fleets.getOrThrow(fleet.id).state).toBe('Deployed');
@@ -64,6 +64,6 @@ describe('DeployFleetHandler', () => {
     const { ctx, services } = setup();
     const fleet = createFleet(ctx.fleets, { name: 'Alpha' }); // Docked
 
-    expect(() => DeployFleetHandler.handle(makeCommand(fleet.id), services)).toThrow();
+    expect(() => DeployFleetWorker.execute(makeCommand(fleet.id), services)).toThrow();
   });
 });

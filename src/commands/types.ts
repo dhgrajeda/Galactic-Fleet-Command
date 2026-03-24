@@ -3,9 +3,9 @@ import type { Logger } from '../logger';
 import type { BattleRepository, Command, CommandRepository , FleetRepository , ResourcePoolRepository } from '../persistence';
 
 /**
- * Services bag passed to command handlers — avoids positional parameters.
+ * Services bag passed to command workers — avoids positional parameters.
  */
-export interface CommandHandlerServices {
+export interface CommandWorkerServices {
   commands: CommandRepository;
   fleets: FleetRepository;
   resourcePools: ResourcePoolRepository;
@@ -15,7 +15,7 @@ export interface CommandHandlerServices {
 }
 
 /**
- * Result from a command handler execution.
+ * Result from a command worker execution.
  */
 export interface CommandResult {
   success: boolean;
@@ -23,11 +23,11 @@ export interface CommandResult {
 }
 
 /**
- * Interface for command handlers. Each command type has a handler.
+ * Interface for command workers. Each command type has a worker.
  */
-export interface ICommandHandler {
+export interface ICommandWorker {
   type: string;
-  handle(command: Command, services: CommandHandlerServices): CommandResult;
+  execute(command: Command, services: CommandWorkerServices): CommandResult;
 }
 
 /**
@@ -35,7 +35,7 @@ export interface ICommandHandler {
  */
 export interface ICommandQueue {
   enqueue(command: Omit<Command, 'id' | 'version' | 'status'>): Command;
-  registerHandler(handler: ICommandHandler): void;
+  registerWorker(worker: ICommandWorker): void;
   flush(): Promise<void>;
   getCommand(id: string): Command | undefined;
   getAllCommands(): Command[];

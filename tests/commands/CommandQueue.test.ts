@@ -3,14 +3,14 @@ import { seedResourcePools } from '../../src/domain/resources';
 import { EventBroker } from '../../src/events';
 import { NoopLogger } from '../../src/logger';
 import { InMemoryCommandQueue } from '../../src/commands/CommandQueue';
-import type { ICommandHandler, CommandHandlerServices } from '../../src/commands/types';
+import type { ICommandWorker, CommandWorkerServices } from '../../src/commands/types';
 import type { Command } from '../../src/persistence';
 
 function makeQueue() {
   const ctx = createPersistenceContext();
   seedResourcePools(ctx.resourcePools);
   const events = new EventBroker();
-  const services: CommandHandlerServices = {
+  const services: CommandWorkerServices = {
     commands: ctx.commands,
     fleets: ctx.fleets,
     resourcePools: ctx.resourcePools,
@@ -22,10 +22,10 @@ function makeQueue() {
   return { queue, services, ctx, events };
 }
 
-function makeHandler(type: string, fn?: (cmd: Command, svc: CommandHandlerServices) => void): ICommandHandler {
+function makeWorker(type: string, fn?: (cmd: Command, svc: CommandWorkerServices) => void): ICommandWorker {
   return {
     type,
-    handle(cmd, svc) {
+    execute(cmd, svc) {
       if (fn) fn(cmd, svc);
       return { success: true };
     },
@@ -50,7 +50,7 @@ describe('InMemoryCommandQueue', () => {
 
   it('processes a command to Succeeded', async () => {
     const { queue } = makeQueue();
-    queue.registerHandler(makeHandler('TestCommand'));
+    queue.registerWorker(makeWorker('TestCommand'));
     const cmd = queue.enqueue({ type: 'TestCommand', payload: {} });
 
     await queue.flush();
@@ -59,7 +59,7 @@ describe('InMemoryCommandQueue', () => {
     expect(result?.status).toBe('Succeeded');
   });
 
-  it('marks command as Failed when no handler is registered', async () => {
+  it('marks command as Failed when no worker is registered', async () => {
     const { queue } = makeQueue();
     const cmd = queue.enqueue({ type: 'UnknownCommand', payload: {} });
 
@@ -69,11 +69,11 @@ describe('InMemoryCommandQueue', () => {
     expect(result?.status).toBe('Failed');
   });
 
-  it('marks command as Failed when handler throws', async () => {
+  it('marks command as Failed when worker throws', async () => {
     const { queue } = makeQueue();
-    queue.registerHandler({
+    queue.registerWorker({
       type: 'FailCommand',
-      handle() {
+      execute() {
         throw new Error('something broke');
       },
     });
@@ -87,7 +87,7 @@ describe('InMemoryCommandQueue', () => {
 
   it('emits command:succeeded event on success', async () => {
     const { queue, events } = makeQueue();
-    queue.registerHandler(makeHandler('TestCommand'));
+    queue.registerWorker(makeWorker('TestCommand'));
 
     const succeededTypes: string[] = [];
     events.subscribe('command:succeeded', (event) => {
@@ -102,9 +102,9 @@ describe('InMemoryCommandQueue', () => {
 
   it('emits command:failed event on failure, not command:succeeded', async () => {
     const { queue, events } = makeQueue();
-    queue.registerHandler({
+    queue.registerWorker({
       type: 'FailCommand',
-      handle() {
+      execute() {
         throw new Error('fail');
       },
     });
@@ -127,8 +127,8 @@ describe('InMemoryCommandQueue', () => {
 
   it('processes commands enqueued by event listeners during flush', async () => {
     const { queue, events } = makeQueue();
-    queue.registerHandler(makeHandler('FirstCommand'));
-    queue.registerHandler(makeHandler('FollowUpCommand'));
+    queue.registerWorker(makeWorker('FirstCommand'));
+    queue.registerWorker(makeWorker('FollowUpCommand'));
 
     events.subscribe('command:succeeded', (event) => {
       if (event.command.type === 'FirstCommand') {
@@ -146,8 +146,8 @@ describe('InMemoryCommandQueue', () => {
 
   it('getAllCommands returns all enqueued commands', async () => {
     const { queue } = makeQueue();
-    queue.registerHandler(makeHandler('A'));
-    queue.registerHandler(makeHandler('B'));
+    queue.registerWorker(makeWorker('A'));
+    queue.registerWorker(makeWorker('B'));
 
     queue.enqueue({ type: 'A', payload: {} });
     queue.enqueue({ type: 'B', payload: {} });
