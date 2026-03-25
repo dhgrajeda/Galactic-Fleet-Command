@@ -95,46 +95,6 @@ Galactic Fleet Command is an event-driven strategy platform. Factions assemble f
 ![preparation-sequence](./images/preparation-sequence.svg)
 
 
-
-## Domain model
-### Fleet
-```
-Fleet
-├── id: string                              (identity)
-├── version: number                         (optimistic lock)
-├── name: string
-├── state: FleetState                       (FSM state)
-├── ships: Ship[]                          
-├── requiredResources: ResourceRequirement  
-├── reservedResources: ResourceRequirement  (set on Ready)
-├── timeline: FleetEvent[]                  (append-only event log)
-```
-
-### Resource pool
-```
-ResourcePool
-├── id: string
-├── version: number
-├── resourceType: ResourceType   (FUEL | HYPERDRIVE_CORE | BATTLE_DROIDS)
-├── total: number                (fixed capacity)
-└── reserved: number             (sum of all active reservations)
-```
-
-### Command
-```
-Command
-├── id: string
-├── version: number
-├── type: CommandType            (PrepareFleet | DeployFleet)
-├── status: CommandStatus        (Queued | Processing | Succeeded | Failed)
-├── payload: Record              (command-specific parameters)
-├── idempotencyKey: string       (client-provided deduplication key)
-├── attemptCount: number
-├── createdAt: string
-├── processedAt?: string
-└── error?: string
-```
-
 # Concurrency strategy
 **Problem:** Multiple requests may attempt to reserve the same resource pool simultaneously. Without coordination, two commands reading `available = 10` could each reserve 8, producing a total reservation of 16.
  
