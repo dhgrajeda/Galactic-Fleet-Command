@@ -20,20 +20,16 @@ export const ResolveBattleWorker: ICommandWorker = {
     const fleetB = services.fleets.getOrThrow(battle.fleetBId);
 
     const winnerId = resolveBattle(fleetA, fleetB);
-    const loserId = winnerId === fleetA.id ? fleetB.id : fleetA.id;
+    const [winner, loser] = winnerId === fleetA.id ? [fleetA, fleetB] : [fleetB, fleetA];
 
-    // Transition fleets
-    const winner = services.fleets.getOrThrow(winnerId);
-    const loser = services.fleets.getOrThrow(loserId);
-
-    resolveVictorious(services.fleets, winnerId, winner.version, services.events);
-    resolveDestroyed(services.fleets, loserId, loser.version, services.events);
+    resolveVictorious(services.fleets, winner.id, winner.version, services.events);
+    resolveDestroyed(services.fleets, loser.id, loser.version, services.events);
 
     // Update battle record
     services.battles.update(battle.id, battle.version, (b) => ({
       ...b,
-      winnerId,
-      loserId,
+      winnerId: winner.id,
+      loserId: loser.id,
       status: 'Resolved' as const,
     }));
 

@@ -58,16 +58,12 @@ export function updateFleet(
   expectedVersion: number,
   input: UpdateFleetInput,
 ): Fleet {
-  let result!: Fleet;
   repo.update(id, expectedVersion, (fleet) => {
     if (fleet.state !== 'Docked') {
       throw new FleetEditError(`Cannot edit fleet in state ${fleet.state}`);
     }
-    if (isTerminal(fleet.state)) {
-      throw new FleetEditError(`Fleet is in terminal state ${fleet.state}`);
-    }
     const ts = now();
-    result = {
+    return {
       ...fleet,
       ...(input.name !== undefined && { name: input.name }),
       ...(input.ships !== undefined && { ships: input.ships }),
@@ -75,9 +71,8 @@ export function updateFleet(
       updatedAt: ts,
       timeline: [...fleet.timeline, { type: 'FleetUpdated', timestamp: ts, data: { ...input } }],
     };
-    return result;
   });
-  return result;
+  return repo.getOrThrow(id);
 }
 
 interface TransitionOptions {
@@ -87,13 +82,12 @@ interface TransitionOptions {
   targetState: Fleet['state'];
   eventType: string;
   eventData?: Record<string, unknown>;
-  extraFields?: Partial<Fleet>;
+  extraFields?: Pick<Fleet, 'reservedResources'>;
   events?: EventBroker;
 }
 
 function transitionFleet(opts: TransitionOptions): Fleet {
-  let result!: Fleet;
-  let previousState!: Fleet['state'];
+  let previousState: Fleet['state'] | undefined;
 
   opts.repo.update(opts.id, opts.expectedVersion, (fleet) => {
     if (isTerminal(fleet.state)) {
@@ -102,22 +96,23 @@ function transitionFleet(opts: TransitionOptions): Fleet {
     assertValidTransition(fleet.state, opts.targetState);
     previousState = fleet.state;
     const ts = now();
-    result = {
+    return {
       ...fleet,
+      ...opts.extraFields,
       state: opts.targetState,
       updatedAt: ts,
-      ...opts.extraFields,
       timeline: [
         ...fleet.timeline,
         { type: opts.eventType, timestamp: ts, ...(opts.eventData && { data: opts.eventData }) },
       ],
     };
-    return result;
   });
+
+  const result = opts.repo.getOrThrow(opts.id);
 
   opts.events?.publish('fleet:stateChanged', {
     fleetId: opts.id,
-    from: previousState,
+    from: previousState!,
     to: opts.targetState,
   });
 

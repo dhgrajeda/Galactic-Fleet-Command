@@ -11,7 +11,7 @@ const TRANSITIONS: Record<FleetState, FleetState[]> = {
   FailedPreparation: [],
 };
 
-const TERMINAL: Set<FleetState> = new Set(['Victorious', 'Destroyed']);
+const TERMINAL: Set<FleetState> = new Set(['Victorious', 'Destroyed', 'FailedPreparation']);
 
 export class InvalidTransitionError extends Error {
   constructor(

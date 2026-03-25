@@ -102,21 +102,19 @@ export class InMemoryCommandQueue implements ICommandQueue {
 
     if (result.success) {
       this.services.logger.info('Command succeeded', { commandId: id });
-      this.services.commands.update(id, cmd.version, (c) => ({
-        ...c,
-        status: 'Succeeded' as const,
-      }));
-      const settled = this.services.commands.getOrThrow(id);
-      this.services.events.publish('command:succeeded', { command: settled });
     } else {
       this.services.logger.error('Command failed', { commandId: id, error: result.error });
-      this.services.commands.update(id, cmd.version, (c) => ({
-        ...c,
-        status: 'Failed' as const,
-        payload: { ...c.payload, error: result.error },
-      }));
-      const settled = this.services.commands.getOrThrow(id);
-      this.services.events.publish('command:failed', { command: settled, error: result.error });
     }
+
+    const status = result.success ? ('Succeeded' as const) : ('Failed' as const);
+    this.services.commands.update(id, cmd.version, (c) => ({
+      ...c,
+      status,
+      ...(result.error && { error: result.error }),
+    }));
+
+    const event = result.success ? 'command:succeeded' : 'command:failed';
+    const settled = this.services.commands.getOrThrow(id);
+    this.services.events.publish(event, { command: settled, ...(result.error && { error: result.error }) });
   }
 }

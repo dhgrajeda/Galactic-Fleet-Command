@@ -118,7 +118,7 @@ describe('allowedTransitions', () => {
 // ── isTerminal ────────────────────────────────────────────────────────────────
 
 describe('isTerminal', () => {
-  it.each(['Victorious', 'Destroyed'] as FleetState[])('%s is terminal', (state) => {
+  it.each(['Victorious', 'Destroyed', 'FailedPreparation'] as FleetState[])('%s is terminal', (state) => {
     expect(isTerminal(state)).toBe(true);
   });
 
@@ -128,7 +128,6 @@ describe('isTerminal', () => {
     'Ready',
     'Deployed',
     'InBattle',
-    'FailedPreparation',
   ] as FleetState[])('%s is not terminal', (state) => {
     expect(isTerminal(state)).toBe(false);
   });
