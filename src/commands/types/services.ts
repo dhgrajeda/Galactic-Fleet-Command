@@ -1,4 +1,4 @@
-import type { EventBroker } from '../../events';
+import type { EventBroker } from '../../events/EventBroker';
 import type { Logger } from '../../logger';
 import type { BattleRepository, CommandRepository, FleetRepository, ResourcePoolRepository } from '../../persistence';
 

@@ -1,7 +1,7 @@
 import { createPersistenceContext } from '../../../src/persistence/context';
 import { createFleet, startPreparation, completePreparation, deployFleet, enterBattle } from '../../../src/domain/fleet';
 import { seedResourcePools } from '../../../src/domain/resources';
-import { EventBroker } from '../../../src/events';
+import { EventBroker } from '../../../src/events/EventBroker';
 import { NoopLogger } from '../../../src/logger';
 import { ResolveBattleWorker } from '../../../src/commands/workers/ResolveBattleWorker';
 import type { CommandWorkerServices } from '../../../src/commands/types';

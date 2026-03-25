@@ -1,12 +1,14 @@
 import { createPersistenceContext } from '../../src/persistence/context';
 import { ConcurrencyError } from '../../src/persistence';
 import { seedResourcePools } from '../../src/domain/resources';
-import { EventBroker } from '../../src/events';
+import { EventBroker } from '../../src/events/EventBroker';
 import { NoopLogger } from '../../src/logger';
 import { InMemoryCommandQueue } from '../../src/commands/CommandQueue';
 import { BattleMatchmaker } from '../../src/domain/battle';
 import { createFleet, startPreparation, completePreparation, deployFleet } from '../../src/domain/fleet';
 import { PrepareFleetWorker } from '../../src/commands/workers/PrepareFleetWorker';
+import { ReserveResourcesWorker } from '../../src/commands/workers/ReserveResourcesWorker';
+import type { ResourceReservedEvent, ResourceReservationFailedEvent } from '../../src/events/EventBroker';
 import type { CommandWorkerServices, ICommandWorker } from '../../src/commands/types';
 import type { Command } from '../../src/persistence';
 
@@ -132,64 +134,66 @@ describe('Command queue optimistic claim', () => {
 
 // ─── 3. Cross-entity partial failure (fleet + resources) ───────────────────
 
-describe('Cross-entity partial failure in PrepareFleet', () => {
-  it('fleet moves to FailedPreparation when resource reservation fails', () => {
+describe('Cross-entity partial failure in ReserveResources', () => {
+  it('emits reservationFailed when resource reservation fails', () => {
     const { ctx, services } = makeServices();
     const fleet = createFleet(ctx.fleets, {
       name: 'Alpha',
       requiredResources: { FUEL: 99999 },
     });
+    startPreparation(ctx.fleets, fleet.id, fleet.version);
+
+    const failed: ResourceReservationFailedEvent[] = [];
+    services.events.subscribe('resource:reservationFailed', (e) => failed.push(e));
 
     const cmd: Command = {
       id: 'cmd-partial',
       version: 1,
-      type: 'PrepareFleet',
+      type: 'ReserveResources',
       status: 'Processing',
-      payload: { fleetId: fleet.id, requiredResources: { FUEL: 99999 } },
+      payload: { fleetId: fleet.id },
     };
 
-    const result = PrepareFleetWorker.execute(cmd, services);
+    const result = ReserveResourcesWorker.execute(cmd, services);
 
     expect(result.success).toBe(true);
-    const updated = ctx.fleets.getOrThrow(fleet.id);
-    expect(updated.state).toBe('FailedPreparation');
+    expect(failed).toHaveLength(1);
+    expect(failed[0].fleetId).toBe(fleet.id);
 
     // Resources should NOT have been reserved
     const fuel = ctx.resourcePools.getByType('FUEL')!;
     expect(fuel.reserved).toBe(0);
   });
 
-  it('partial multi-resource reservation does not leave dangling reservations', () => {
+  it('partial multi-resource reservation emits failure without full rollback', () => {
     const { ctx, services } = makeServices();
 
     // FUEL has 1000, HYPERDRIVE_CORE has 10
-    // Request more HYPERDRIVE_CORE than available, but FUEL is fine
-    const fleet = createFleet(ctx.fleets, { name: 'Greedy' });
+    const fleet = createFleet(ctx.fleets, {
+      name: 'Greedy',
+      requiredResources: { FUEL: 100, HYPERDRIVE_CORE: 999 },
+    });
+    startPreparation(ctx.fleets, fleet.id, fleet.version);
+
+    const failed: ResourceReservationFailedEvent[] = [];
+    services.events.subscribe('resource:reservationFailed', (e) => failed.push(e));
+
     const cmd: Command = {
       id: 'cmd-partial-multi',
       version: 1,
-      type: 'PrepareFleet',
+      type: 'ReserveResources',
       status: 'Processing',
-      payload: {
-        fleetId: fleet.id,
-        requiredResources: { FUEL: 100, HYPERDRIVE_CORE: 999 },
-      },
+      payload: { fleetId: fleet.id },
     };
 
-    PrepareFleetWorker.execute(cmd, services);
+    ReserveResourcesWorker.execute(cmd, services);
 
-    const updated = ctx.fleets.getOrThrow(fleet.id);
-    expect(updated.state).toBe('FailedPreparation');
+    expect(failed).toHaveLength(1);
 
     // FUEL was reserved before HYPERDRIVE_CORE failed.
-    // The current implementation does NOT roll back partial reservations.
-    // This is a known trade-off documented in DESIGN.md — the retry path
-    // handles it via idempotency fences rather than rollback.
+    // Known trade-off — no rollback of partial reservations.
     const fuel = ctx.resourcePools.getByType('FUEL')!;
     const hdc = ctx.resourcePools.getByType('HYPERDRIVE_CORE')!;
-
-    // FUEL: reserved because it's processed first (order of Object.entries)
-    // HDC: not reserved because insufficient
     expect(fuel.reserved).toBe(100);
     expect(hdc.reserved).toBe(0);
   });
@@ -198,7 +202,7 @@ describe('Cross-entity partial failure in PrepareFleet', () => {
 // ─── 4. Idempotency fence under simulated concurrent retry ─────────────────
 
 describe('Idempotency fence under retry', () => {
-  it('second PrepareFleet does not double-reserve after first succeeds', () => {
+  it('second PrepareFleet is idempotent when fleet already left Docked', () => {
     const { ctx, services } = makeServices();
     const fleet = createFleet(ctx.fleets, {
       name: 'Alpha',
@@ -210,24 +214,66 @@ describe('Idempotency fence under retry', () => {
       version: 1,
       type: 'PrepareFleet',
       status: 'Processing',
-      payload: { fleetId: fleet.id, requiredResources: { FUEL: 200 } },
+      payload: { fleetId: fleet.id },
     };
     const cmd2: Command = {
       id: 'cmd-second',
       version: 1,
       type: 'PrepareFleet',
       status: 'Processing',
-      payload: { fleetId: fleet.id, requiredResources: { FUEL: 200 } },
+      payload: { fleetId: fleet.id },
     };
 
-    // First command succeeds
+    // First command moves to Preparing
     PrepareFleetWorker.execute(cmd1, services);
     const afterFirst = ctx.fleets.getOrThrow(fleet.id);
-    expect(afterFirst.state).toBe('Ready');
+    expect(afterFirst.state).toBe('Preparing');
 
-    // Second command hits idempotency fence — fleet is already Ready
+    // Second command hits idempotency fence
     const result = PrepareFleetWorker.execute(cmd2, services);
     expect(result.success).toBe(true);
+    expect(ctx.fleets.getOrThrow(fleet.id).state).toBe('Preparing');
+  });
+
+  it('second ReserveResources does not double-reserve after first succeeds', () => {
+    const { ctx, services } = makeServices();
+    const fleet = createFleet(ctx.fleets, {
+      name: 'Alpha',
+      requiredResources: { FUEL: 200 },
+    });
+    startPreparation(ctx.fleets, fleet.id, fleet.version);
+
+    const reserved: ResourceReservedEvent[] = [];
+    services.events.subscribe('resource:reserved', (e) => reserved.push(e));
+
+    const cmd1: Command = {
+      id: 'cmd-first',
+      version: 1,
+      type: 'ReserveResources',
+      status: 'Processing',
+      payload: { fleetId: fleet.id },
+    };
+
+    // First command reserves
+    ReserveResourcesWorker.execute(cmd1, services);
+    expect(reserved).toHaveLength(1);
+
+    // Simulate that CompletePreparationWorker moved fleet to Ready
+    const preparing = ctx.fleets.getOrThrow(fleet.id);
+    ctx.fleets.update(fleet.id, preparing.version, (f) => ({ ...f, state: 'Ready' as const }));
+
+    const cmd2: Command = {
+      id: 'cmd-second',
+      version: 1,
+      type: 'ReserveResources',
+      status: 'Processing',
+      payload: { fleetId: fleet.id },
+    };
+
+    // Second command hits idempotency fence
+    const result = ReserveResourcesWorker.execute(cmd2, services);
+    expect(result.success).toBe(true);
+    expect(reserved).toHaveLength(1); // no second event
 
     // Resources reserved only once
     const fuel = ctx.resourcePools.getByType('FUEL')!;
@@ -253,13 +299,9 @@ describe('Idempotency fence under retry', () => {
     const result = PrepareFleetWorker.execute(cmd, services);
     expect(result.success).toBe(true);
 
-    // Fleet stays in Preparing (fence returns early, no resource reservation)
+    // Fleet stays in Preparing (fence returns early)
     const updated = ctx.fleets.getOrThrow(fleet.id);
     expect(updated.state).toBe('Preparing');
-
-    // No resources reserved (fence skipped reservation)
-    const fuel = ctx.resourcePools.getByType('FUEL')!;
-    expect(fuel.reserved).toBe(0);
   });
 });
 

@@ -1,7 +1,7 @@
 import type { CommandWorkerServices, ICommandQueue } from '../commands/types';
 import { deriveBattleId } from '../domain/battle';
 import { BattleMatchmaker } from '../domain/battle/BattleMatchmaker';
-import type { CommandSucceededEvent, FleetStateChangedEvent } from '../events';
+import type { CommandSucceededEvent, FleetStateChangedEvent } from './EventBroker';
 
 /**
  * Wires EventBroker subscribers that drive the battle automation:

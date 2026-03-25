@@ -1,6 +1,6 @@
 import { ConcurrencyError, NotFoundError, createInMemoryFleetRepository } from '../../../src/persistence';
-import { EventBroker } from '../../../src/events';
-import type { FleetStateChangedEvent } from '../../../src/events';
+import { EventBroker } from '../../../src/events/EventBroker';
+import type { FleetStateChangedEvent } from '../../../src/events/EventBroker';
 import {
   FleetEditError,
   InvalidTransitionError,

@@ -3,8 +3,9 @@ import express from 'express';
 import { createCommandQueue } from './commands/createCommandQueue';
 import type { CommandWorkerServices } from './commands/types';
 import { seedResourcePools } from './domain/resources';
-import { EventBroker } from './events';
+import { EventBroker } from './events/EventBroker';
 import { battleEvents } from './events/battleEvents';
+import { fleetEvents } from './events/fleetEvents';
 import type { Logger } from './logger';
 import { ConsoleLogger } from './logger';
 import { createPersistenceContext } from './persistence/context';
@@ -37,6 +38,7 @@ export function createApp(options?: { logger?: Logger }) {
 
   // Command Queue + event wiring
   const commandQueue = createCommandQueue(services);
+  fleetEvents(services, commandQueue);
   battleEvents(services, commandQueue);
 
   // Routes

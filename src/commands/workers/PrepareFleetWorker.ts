@@ -1,5 +1,4 @@
-import { startPreparation, completePreparation, failPreparation } from '../../domain/fleet';
-import { reserve, InsufficientResourceError } from '../../domain/resources';
+import { startPreparation, updateFleet } from '../../domain/fleet';
 import type { Command } from '../../persistence';
 import type { ICommandWorker, CommandWorkerServices, CommandResult } from '../types';
 
@@ -12,26 +11,20 @@ export const PrepareFleetWorker: ICommandWorker = {
       requiredResources?: Record<string, number>;
     };
 
-    const fleet = services.fleets.getOrThrow(fleetId);
+    let fleet = services.fleets.getOrThrow(fleetId);
 
-    // Idempotency fence: if already Preparing or Ready, return success
-    if (fleet.state === 'Preparing' || fleet.state === 'Ready') {
+    // Idempotency fence: if already Preparing or beyond, return success
+    if (fleet.state !== 'Docked') {
       return { success: true };
     }
 
-    // Fleet-first: transition to Preparing
-    const preparing = startPreparation(services.fleets, fleetId, fleet.version, services.events);
-
-    // Then try to reserve resources
-    const resources = requiredResources ?? fleet.requiredResources ?? {};
-    try {
-      const reserved = reserve(services.resourcePools, resources);
-      completePreparation(services.fleets, fleetId, preparing.version, reserved, services.events);
-    } catch (err) {
-      const reason = err instanceof InsufficientResourceError ? err.message : 'Resource reservation failed';
-      failPreparation(services.fleets, fleetId, preparing.version, reason, services.events);
-      return { success: true }; // Command itself succeeded — fleet moved to FailedPreparation
+    // If command supplies requiredResources, persist them on the fleet while still Docked
+    if (requiredResources) {
+      fleet = updateFleet(services.fleets, fleetId, fleet.version, { requiredResources });
     }
+
+    // Transition Docked → Preparing; emits fleet:stateChanged which triggers ReserveResources
+    startPreparation(services.fleets, fleetId, fleet.version, services.events);
 
     return { success: true };
   },

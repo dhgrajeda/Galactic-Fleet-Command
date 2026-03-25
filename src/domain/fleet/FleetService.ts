@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
 
-import type { EventBroker } from '../../events';
+import type { EventBroker } from '../../events/EventBroker';
 import type { Fleet, FleetRepository, Ship } from '../../persistence';
 
 import { assertValidTransition, InvalidTransitionError, isTerminal } from './stateMachine';

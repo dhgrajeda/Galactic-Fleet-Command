@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 
-import type { FleetState, Command } from './persistence';
+import type { FleetState, Command } from '../persistence';
 
 export interface FleetStateChangedEvent {
   fleetId: string;
@@ -17,8 +17,20 @@ export interface CommandFailedEvent {
   error?: string;
 }
 
+export interface ResourceReservedEvent {
+  fleetId: string;
+  reservedResources: Record<string, number>;
+}
+
+export interface ResourceReservationFailedEvent {
+  fleetId: string;
+  reason: string;
+}
+
 export interface AppEvents {
   'fleet:stateChanged': FleetStateChangedEvent;
+  'resource:reserved': ResourceReservedEvent;
+  'resource:reservationFailed': ResourceReservationFailedEvent;
   'command:succeeded': CommandSucceededEvent;
   'command:failed': CommandFailedEvent;
 }

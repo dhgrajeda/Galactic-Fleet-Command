@@ -1,6 +1,6 @@
 import { createPersistenceContext } from '../../src/persistence/context';
 import { seedResourcePools } from '../../src/domain/resources';
-import { EventBroker } from '../../src/events';
+import { EventBroker } from '../../src/events/EventBroker';
 import { NoopLogger } from '../../src/logger';
 import { InMemoryCommandQueue } from '../../src/commands/CommandQueue';
 import type { ICommandWorker, CommandWorkerServices } from '../../src/commands/types';
