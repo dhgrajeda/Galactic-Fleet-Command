@@ -1,5 +1,5 @@
-import { deriveBattleId } from '../commands/workers/StartBattleWorker';
 import type { CommandWorkerServices, ICommandQueue } from '../commands/types';
+import { deriveBattleId } from '../domain/battle';
 import { BattleMatchmaker } from '../domain/battle/BattleMatchmaker';
 import type { CommandSucceededEvent, FleetStateChangedEvent } from '../events';
 

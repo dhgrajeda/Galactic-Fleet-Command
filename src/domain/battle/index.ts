@@ -1,2 +1,2 @@
 export { BattleMatchmaker, type IBattleMatchmaker } from './BattleMatchmaker';
-export { calculateScore, resolveBattle } from './BattleResolver';
+export { calculateScore, deriveBattleId, resolveBattle } from './BattleResolver';

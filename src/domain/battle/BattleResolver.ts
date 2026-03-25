@@ -1,6 +1,14 @@
 import type { Fleet } from '../../persistence';
 
 /**
+ * Derives a deterministic battle ID from a command ID.
+ * Used by both the StartBattle worker and battle event wiring.
+ */
+export function deriveBattleId(commandId: string): string {
+  return `battle-${commandId}`;
+}
+
+/**
  * Calculate a fleet's battle score.
  * score = (sum(reservedResources) + 50) * random[0.5, 1.5)
  * The base of 50 ensures even fleets with no resources have a fighting chance.

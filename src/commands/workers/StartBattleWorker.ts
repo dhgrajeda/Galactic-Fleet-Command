@@ -1,10 +1,7 @@
+import { deriveBattleId } from '../../domain/battle';
 import { enterBattle } from '../../domain/fleet';
 import type { Command } from '../../persistence';
 import type { ICommandWorker, CommandWorkerServices, CommandResult } from '../types';
-
-export function deriveBattleId(commandId: string): string {
-  return `battle-${commandId}`;
-}
 
 export const StartBattleWorker: ICommandWorker = {
   type: 'StartBattle',
