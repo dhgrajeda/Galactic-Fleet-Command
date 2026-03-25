@@ -91,9 +91,6 @@ Galactic Fleet Command is an event-driven strategy platform. Factions assemble f
 ### High level
 ![architecture](./images/arch.svg)
 
-### Events
-![events](./images/arch-events.svg)
-
 ### Preparation Sequence
 ![preparation-sequence](./images/preparation-sequence.svg)
 

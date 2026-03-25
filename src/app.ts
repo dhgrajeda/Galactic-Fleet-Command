@@ -38,7 +38,7 @@ export function createApp(options?: { logger?: Logger }) {
 
   // Command Queue + event wiring
   const commandQueue = createCommandQueue(services);
-  fleetEvents(services, commandQueue);
+  fleetEvents(services);
   battleEvents(services, commandQueue);
 
   // Routes
